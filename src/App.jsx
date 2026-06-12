@@ -25,7 +25,9 @@ export default function App() {
 
   const [meals, setMeals] = useState(() => load('meals', []))
   const [water, setWater] = useState(() => load('water', 0)) // بالمل (ml)
+  const [steps, setSteps] = useState(() => load('steps', 0))
   const waterGoal = 2500 // الهدف اليومي بالمل
+  const stepsGoal = 6000
   const [burned, setBurned] = useState(() => load('burned', 0))
   const [weights, setWeights] = useState(() => load('weights', []))
   const [savedRecipes, setSavedRecipes] = useState(() => load('recipes', []))
@@ -38,8 +40,8 @@ export default function App() {
   useEffect(() => {
     const t = todayKey()
     if (day !== t) {
-      setDay(t); setMeals([]); setWater(0); setBurned(0)
-      save('day', t); save('meals', []); save('water', 0); save('burned', 0)
+      setDay(t); setMeals([]); setWater(0); setBurned(0); setSteps(0)
+      save('day', t); save('meals', []); save('water', 0); save('burned', 0); save('steps', 0)
     }
   }, [])
 
@@ -49,6 +51,7 @@ export default function App() {
   useEffect(() => save('meals', meals), [meals])
   useEffect(() => save('water', water), [water])
   useEffect(() => save('burned', burned), [burned])
+  useEffect(() => save('steps', steps), [steps])
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
   useEffect(() => save('threads', threads), [threads])
@@ -113,7 +116,14 @@ export default function App() {
   }
 
   function clearThread(ctx) { setThreads(t => ({ ...t, [ctx]: [] })) }
-  function addMeal(m) { setMeals(x => [{ ...m, id: Date.now() }, ...x]) }
+  function mealType() {
+    const h = new Date().getHours()
+    if (h < 11) return 'فطور'; if (h < 16) return 'غداء'; if (h < 21) return 'عشاء'; return 'سناك'
+  }
+  function addMeal(m) {
+    const time = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+    setMeals(x => [{ ...m, id: Date.now(), time, type: m.type || mealType() }, ...x])
+  }
   function delMeal(id) { setMeals(x => x.filter(m => m.id !== id)) }
   function logWorkout(ex, minutes = 20) {
     const w = profile?.weight || 70
@@ -142,7 +152,7 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal, setTab }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile }} />}
         {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
         {tab === 'workout' && <Workout {...{ logWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
@@ -241,93 +251,178 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
   )
 }
 
-// ============ الرئيسية ============
-function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal, setTab }) {
-  const waterPct = Math.min(100, (water / waterGoal) * 100)
-  const pct = Math.min(100, (net / target) * 100)
+// ============ الرئيسية (تصميم احترافي) ============
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile }) {
+  const [macroView, setMacroView] = useState('eaten') // eaten | left
+  const calPct = Math.min(100, (net / target) * 100)
+  const show = macroView === 'eaten'
+
+  // أهداف الماكروز التقريبية (% من السعرات)
+  const pGoal = Math.round(target * 0.30 / 4)
+  const cGoal = Math.round(target * 0.40 / 4)
+  const fGoal = Math.round(target * 0.30 / 9)
+
+  // أيام الأسبوع
+  const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+  const todayIdx = new Date().getDay()
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i))
+    return { num: d.getDate(), name: days[d.getDay()], today: i === 6 }
+  })
+
+  // تجميع الوجبات حسب النوع
+  const order = ['فطور', 'غداء', 'عشاء', 'سناك']
+  const groups = order.map(t => ({ type: t, items: meals.filter(m => m.type === t) })).filter(g => g.items.length)
+
   return (
     <div className="fade">
-      {/* حلقة السعرات */}
-      <div style={{ ...card, textAlign: 'center', padding: 20 }}>
-        <Ring value={net} max={target} color={goal.color} />
-        <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 16 }}>
-          <Stat label="مأكول" value={totals.cal} />
-          <Stat label="محروق" value={burned} color="#ef4444" />
-          <Stat label="متبقي" value={remaining > 0 ? remaining : 0} color={goal.color} />
-        </div>
+      {/* شريط أيام الأسبوع */}
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between', marginBottom: 14 }}>
+        {weekDays.map((d, i) => (
+          <div key={i} style={{
+            flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 14,
+            background: d.today ? goal.color : 'var(--card)',
+            border: `1px solid ${d.today ? goal.color : 'var(--border)'}`,
+          }}>
+            <div style={{ fontSize: 9, color: d.today ? '#fff' : 'var(--muted)', marginBottom: 2 }}>{d.name.slice(0, 3)}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: d.today ? '#fff' : 'var(--text)' }}>{d.num}</div>
+          </div>
+        ))}
       </div>
 
-      {/* أزرار سريعة — إضافة أكل + المساعد */}
-      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-        <button onClick={() => setTab('chat')}
-          style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 14, background: `linear-gradient(135deg, ${goal.color}33, var(--card))` }}>
-          <span style={{ fontSize: 26 }}>➕</span>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>أضف وجبة</span>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>اكتب أو صوّر</span>
-        </button>
-        <button onClick={() => setTab('chat')}
-          style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 14 }}>
-          <span style={{ fontSize: 26 }}>💬</span>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>المساعد الذكي</span>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>اسأل أي شي</span>
-        </button>
-      </div>
-
-      {/* الماكروز */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-        <Macro label="بروتين" value={totals.p} unit="g" color="#22c55e" />
-        <Macro label="كارب" value={totals.c} unit="g" color="#f59e0b" />
-        <Macro label="دهون" value={totals.f} unit="g" color="#ef4444" />
-      </div>
-
-      {/* الماء — بالمل واللتر */}
-      <div style={{ ...card, marginTop: 12 }}>
+      {/* كرت السعرات الكبير */}
+      <div style={{ ...card, padding: 18, background: `linear-gradient(135deg, ${goal.color}22, var(--card))` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontWeight: 700 }}>💧 الماء</span>
-          <span style={{ color: '#3b82f6', fontSize: 15, fontWeight: 700 }}>
-            {(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر
-          </span>
+          <span style={{ fontWeight: 700 }}>🔥 السعرات الحرارية</span>
+          <span style={{ fontSize: 14 }}><b style={{ fontSize: 22, color: goal.color }}>{net}</b> <span style={{ color: 'var(--muted)' }}>/ {target}</span></span>
         </div>
-        {/* شريط التقدم */}
-        <div style={{ height: 14, background: 'var(--card2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-          <div style={{ height: '100%', width: `${waterPct}%`, background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', borderRadius: 10, transition: '.3s' }} />
+        <div style={{ height: 14, background: 'var(--card2)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${calPct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}aa)`, borderRadius: 10, transition: '.4s' }} />
         </div>
-        {/* أزرار إضافة بأحجام */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[[200, 'كوب'], [330, 'علبة'], [500, '½ لتر'], [1000, 'لتر']].map(([ml, lbl]) => (
-            <button key={ml} onClick={() => setWater(w => Math.min(waterGoal + 1000, w + ml))}
-              style={{ flex: 1, padding: '10px 4px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 2, border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 18 }}>💧</span>
-              <span style={{ fontSize: 11, fontWeight: 700 }}>{lbl}</span>
-              <span style={{ fontSize: 9, color: 'var(--muted)' }}>{ml}مل</span>
-            </button>
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 14, fontSize: 13 }}>
+          <span style={{ color: 'var(--muted)' }}>مأكول <b style={{ color: 'var(--text)' }}>{totals.cal}</b></span>
+          <span style={{ color: 'var(--muted)' }}>محروق <b style={{ color: '#ef4444' }}>{burned}</b></span>
+          <span style={{ color: 'var(--muted)' }}>متبقي <b style={{ color: goal.color }}>{remaining > 0 ? remaining : 0}</b></span>
         </div>
-        {water > 0 && (
-          <button onClick={() => setWater(w => Math.max(0, w - 200))}
-            style={{ width: '100%', marginTop: 8, padding: 8, borderRadius: 10, background: 'transparent', color: 'var(--muted)', fontSize: 13, border: '1px solid var(--border)' }}>
-            ↩️ تراجع (−200 مل)
-          </button>
-        )}
       </div>
 
-      {/* الوجبات */}
-      <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 700, fontSize: 16 }}>وجبات اليوم</div>
-      {meals.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-        ما سجّلت وجبات بعد — روح للمساعد 💬 وقول وش أكلت
-      </div>}
-      {meals.map(m => (
-        <div key={m.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }} className="pop">
-          <div>
-            <div style={{ fontWeight: 700 }}>{m.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>ب {m.p}g · ك {m.c}g · د {m.f}g</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontWeight: 800, color: goal.color }}>{m.cal}</span>
-            <button onClick={() => delMeal(m.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
+      {/* مفتاح المستهلك / المتبقي */}
+      <div style={{ display: 'flex', gap: 6, background: 'var(--card)', borderRadius: 14, padding: 4, marginTop: 12, border: '1px solid var(--border)' }}>
+        {[['eaten', 'المستهلك'], ['left', 'المتبقي']].map(([v, l]) => (
+          <button key={v} onClick={() => setMacroView(v)}
+            style={{ flex: 1, padding: 9, borderRadius: 10, fontWeight: 700, fontSize: 14, background: macroView === v ? goal.color : 'transparent', color: macroView === v ? '#fff' : 'var(--muted)' }}>{l}</button>
+        ))}
+      </div>
+
+      {/* كروت الماكروز الملوّنة */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+        <MacroCard label="بروتين" emoji="🥩" val={show ? totals.p : Math.max(0, pGoal - totals.p)} goal={pGoal} color="#ef4444" />
+        <MacroCard label="كارب" emoji="🌾" val={show ? totals.c : Math.max(0, cGoal - totals.c)} goal={cGoal} color="#3b82f6" />
+        <MacroCard label="دهون" emoji="🥑" val={show ? totals.f : Math.max(0, fGoal - totals.f)} goal={fGoal} color="#22c55e" />
+      </div>
+
+      {/* الماء (دائري) + الخطوات */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+        {/* الماء */}
+        <div style={{ ...card, textAlign: 'center', padding: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>💧 الماء</div>
+          <WaterGauge value={water} max={waterGoal} />
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر</div>
+          <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+            {[[200, 'كوب'], [500, '½ل']].map(([ml, l]) => (
+              <button key={ml} onClick={() => setWater(w => w + ml)} style={{ flex: 1, padding: '7px 2px', borderRadius: 10, background: '#3b82f622', color: '#60a5fa', fontSize: 12, fontWeight: 700, border: '1px solid #3b82f644' }}>+{l}</button>
+            ))}
+            {water > 0 && <button onClick={() => setWater(w => Math.max(0, w - 200))} style={{ padding: '7px 9px', borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 13 }}>↩️</button>}
           </div>
         </div>
-      ))}
+        {/* الخطوات */}
+        <div style={{ ...card, textAlign: 'center', padding: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>👟 الخطوات</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#a855f7', marginTop: 14 }}>{steps.toLocaleString()}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>الهدف {stepsGoal.toLocaleString()}</div>
+          <div style={{ height: 8, background: 'var(--card2)', borderRadius: 6, overflow: 'hidden', margin: '10px 0 8px' }}>
+            <div style={{ height: '100%', width: `${Math.min(100, steps / stepsGoal * 100)}%`, background: '#a855f7', borderRadius: 6 }} />
+          </div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {[1000, 3000].map(s => (
+              <button key={s} onClick={() => setSteps(x => x + s)} style={{ flex: 1, padding: '7px 2px', borderRadius: 10, background: '#a855f722', color: '#c084fc', fontSize: 12, fontWeight: 700, border: '1px solid #a855f744' }}>+{s / 1000}ألف</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* الوجبات مجمّعة حسب النوع */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 8 }}>
+        <span style={{ fontWeight: 800, fontSize: 17 }}>وجبات اليوم ({meals.length})</span>
+        <button onClick={() => setTab('chat')} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ أضف</button>
+      </div>
+
+      {meals.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+        ما سجّلت وجبات بعد 🍽️<br /><span style={{ fontSize: 13 }}>اضغط "+ أضف" واكتب أو صوّر أكلك</span>
+      </div>}
+
+      {groups.map(g => {
+        const gt = g.items.reduce((a, m) => a + (m.cal || 0), 0)
+        return (
+          <div key={g.type} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '0 4px' }}>
+              <span style={{ fontWeight: 800, fontSize: 15 }}>{mealEmoji(g.type)} {g.type}</span>
+              <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{gt} سعرة</span>
+            </div>
+            {g.items.map(m => (
+              <div key={m.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: 12 }} className="pop">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {m.time && <span>🕐 {m.time}</span>}
+                    <span style={{ color: '#ef4444' }}>ب {m.p}g</span>
+                    <span style={{ color: '#3b82f6' }}>ك {m.c}g</span>
+                    <span style={{ color: '#22c55e' }}>د {m.f}g</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 800, color: goal.color, fontSize: 16 }}>{m.cal}</span>
+                  <button onClick={() => delMeal(m.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function mealEmoji(t) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[t] || '🍴' }
+
+// كرت ماكرو ملوّن
+function MacroCard({ label, emoji, val, goal, color }) {
+  const pct = Math.min(100, (val / goal) * 100)
+  return (
+    <div style={{ background: `${color}1a`, border: `1px solid ${color}44`, borderRadius: 16, padding: 12, textAlign: 'center' }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{emoji} {label}</div>
+      <div style={{ fontSize: 19, fontWeight: 800, color, margin: '4px 0' }}>{val}<span style={{ fontSize: 11, color: 'var(--muted)' }}>/{goal}g</span></div>
+      <div style={{ height: 5, background: 'var(--card2)', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: '.3s' }} />
+      </div>
+    </div>
+  )
+}
+
+// عدّاد ماء دائري
+function WaterGauge({ value, max }) {
+  const pct = Math.min(100, (value / max) * 100)
+  const r = 32, c = 2 * Math.PI * r
+  return (
+    <div style={{ position: 'relative', width: 86, height: 86, margin: '0 auto' }}>
+      <svg width="86" height="86" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="43" cy="43" r={r} stroke="var(--card2)" strokeWidth="8" fill="none" />
+        <circle cx="43" cy="43" r={r} stroke="#3b82f6" strokeWidth="8" fill="none"
+          strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c} strokeLinecap="round" style={{ transition: 'stroke-dashoffset .4s' }} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 17, color: '#60a5fa' }}>
+        {Math.round(pct)}%
+      </div>
     </div>
   )
 }
@@ -558,6 +653,9 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
         <div style={{ fontSize: 32, fontWeight: 800, color: goal.color }}>{target} <span style={{ fontSize: 16, color: 'var(--muted)' }}>سعرة</span></div>
       </div>
 
+      {/* مؤشر كتلة الجسم BMI */}
+      <BMICard profile={profile} />
+
       <div style={{ ...card, marginTop: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 10 }}>⚖️ سجّل وزنك</div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -580,6 +678,34 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ============ مؤشر كتلة الجسم ============
+function BMICard({ profile }) {
+  const h = profile.height / 100
+  const bmi = h > 0 ? (profile.weight / (h * h)) : 0
+  const b = bmi.toFixed(1)
+  let cat, col
+  if (bmi < 18.5) { cat = 'نحافة'; col = '#3b82f6' }
+  else if (bmi < 25) { cat = 'طبيعي'; col = '#22c55e' }
+  else if (bmi < 30) { cat = 'زيادة'; col = '#f59e0b' }
+  else { cat = 'سمنة'; col = '#ef4444' }
+  // موضع المؤشر على المقياس 15-40
+  const pos = Math.max(0, Math.min(100, ((bmi - 15) / 25) * 100))
+  return (
+    <div style={{ ...card, marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontWeight: 700 }}>مؤشر كتلة الجسم</span>
+        <span><b style={{ fontSize: 22 }}>{b}</b> <span style={{ background: col, color: '#fff', padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{cat}</span></span>
+      </div>
+      <div style={{ position: 'relative', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#3b82f6 0%,#22c55e 30%,#f59e0b 55%,#ef4444 100%)' }}>
+        <div style={{ position: 'absolute', top: -4, left: `${pos}%`, transform: 'translateX(-50%)', width: 4, height: 18, background: '#fff', borderRadius: 3, boxShadow: '0 0 4px rgba(0,0,0,.5)' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
+        <span>15</span><span>18.5</span><span>25</span><span>30</span><span>40</span>
+      </div>
     </div>
   )
 }

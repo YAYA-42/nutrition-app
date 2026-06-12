@@ -27,8 +27,8 @@ export default function App() {
   const [water, setWater] = useState(() => load('water', 0)) // بالمل (ml)
   const [steps, setSteps] = useState(() => load('steps', 0))
   const [workoutsDone, setWorkoutsDone] = useState(() => load('workoutsDone', []))
-  const waterGoal = 2500 // الهدف اليومي بالمل
-  const stepsGoal = 6000
+  const [waterGoal, setWaterGoal] = useState(() => load('waterGoal', 2500)) // الهدف اليومي بالمل
+  const [stepsGoal, setStepsGoal] = useState(() => load('stepsGoal', 6000))
   const [burned, setBurned] = useState(() => load('burned', 0))
   const [weights, setWeights] = useState(() => load('weights', []))
   const [savedRecipes, setSavedRecipes] = useState(() => load('recipes', []))
@@ -55,6 +55,8 @@ export default function App() {
   useEffect(() => save('burned', burned), [burned])
   useEffect(() => save('steps', steps), [steps])
   useEffect(() => save('workoutsDone', workoutsDone), [workoutsDone])
+  useEffect(() => save('waterGoal', waterGoal), [waterGoal])
+  useEffect(() => save('stepsGoal', stepsGoal), [stepsGoal])
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
   useEffect(() => save('threads', threads), [threads])
@@ -187,7 +189,7 @@ export default function App() {
           <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.5px' }}>هدفك الحالي</div>
           <div style={{ fontSize: 21, fontWeight: 800, marginTop: 1 }}>{goal.emoji} {goal.name}</div>
         </div>
-        <button onClick={() => { setGoalId(null) }} style={{ ...chip, background: `${goal.color}22`, color: goal.color, border: `1px solid ${goal.color}55` }}>تغيير ✦</button>
+        <button onClick={() => setTab('settings')} style={{ width: 42, height: 42, borderRadius: 13, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 20 }}>⚙️</button>
       </div>
 
       <div style={{ padding: '0 16px' }}>
@@ -195,7 +197,8 @@ export default function App() {
         {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
         {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
-        {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
+        {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }} />}
+        {tab === 'settings' && <Settings {...{ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target }} />}
       </div>
 
       {/* شيت تسجيل الوجبة */}
@@ -1106,7 +1109,7 @@ function Recipes({ savedRecipes, setSavedRecipes, goal, thread, loading, sendAI,
 }
 
 // ============ التقدم ============
-function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
+function Progress({ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }) {
   const [w, setW] = useState('')
   function addW() {
     if (!w) return
@@ -1115,45 +1118,119 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
     setProfile({ ...profile, weight: +w })
     setW('')
   }
-  const max = Math.max(...weights.map(e => e.v), profile.weight, 1)
-  const min = Math.min(...weights.map(e => e.v), profile.weight)
-  const range = max - min || 1
+  const start = profile.startWeight || profile.weight
+  const change = (profile.weight - start).toFixed(1)
+  const up = +change > 0
 
   return (
-    <div className="fade">
-      <div style={{ ...card }}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>📊 احتياجك اليومي</div>
-        <div style={{ fontSize: 32, fontWeight: 800, color: goal.color }}>{target} <span style={{ fontSize: 16, color: 'var(--muted)' }}>سعرة</span></div>
+    <div className="fade stagger">
+      {/* ===== المتابعة اليومية ===== */}
+      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 10 }}>📅 متابعتك اليوم</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <DailyStat icon="🔥" label="السعرات" val={net} max={target} unit="" color={goal.color} />
+        <DailyStat icon="💧" label="الماء" val={water} max={waterGoal} unit="مل" color="#3b82f6" />
+        <DailyStat icon="👟" label="الخطوات" val={steps} max={stepsGoal} unit="" color="#a855f7" />
+        <DailyStat icon="🍽️" label="مأكول" val={totals.cal} max={target} unit="" color="#f59e0b" sub={`محروق ${burned}`} />
+      </div>
+
+      {/* ===== الوزن الحالي ===== */}
+      <div style={{ ...card, marginTop: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>الوزن الحالي</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+              <span style={{ fontSize: 38, fontWeight: 800 }}>{profile.weight}</span>
+              <span style={{ fontSize: 16, color: 'var(--muted)' }}>كجم</span>
+            </div>
+            {weights.length > 0 && change !== '0.0' && (
+              <div style={{ display: 'inline-block', marginTop: 4, fontSize: 12, fontWeight: 700, color: up ? '#f59e0b' : '#22c55e', background: (up ? '#f59e0b' : '#22c55e') + '22', padding: '2px 10px', borderRadius: 20 }}>
+                {up ? '↑' : '↓'} {Math.abs(change)} كجم من البداية
+              </div>
+            )}
+          </div>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${goal.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>⚖️</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <input value={w} onChange={e => setW(e.target.value)} placeholder="سجّل وزن جديد" type="number"
+            style={{ flex: 1, padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', width: '100%' }} />
+          <button onClick={addW} style={{ ...primaryBtn, width: 'auto', padding: '0 22px', background: goal.color }}>＋ سجّل</button>
+        </div>
       </div>
 
       {/* هدف الوزن */}
       {profile.targetWeight > 0 && <GoalCard profile={profile} goal={goal} />}
 
-      {/* مؤشر كتلة الجسم BMI */}
+      {/* BMI */}
       <BMICard profile={profile} />
 
-      <div style={{ ...card, marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>⚖️ سجّل وزنك</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={w} onChange={e => setW(e.target.value)} placeholder={`الحالي: ${profile.weight} كجم`} type="number"
-            style={{ flex: 1, padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-          <button onClick={addW} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: goal.color }}>حفظ</button>
-        </div>
-      </div>
+      {/* رسم تطور الوزن (خط منحني) */}
+      <WeightChart weights={weights} profile={profile} goal={goal} />
+    </div>
+  )
+}
 
-      {weights.length > 0 && (
-        <div style={{ ...card, marginTop: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 14 }}>تطور الوزن</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120 }}>
-            {[...weights].reverse().slice(-10).map(e => (
-              <div key={e.id} style={{ flex: 1, textAlign: 'center' }}>
-                <div style={{ background: goal.color, borderRadius: 6, height: `${20 + ((e.v - min) / range) * 80}%`, minHeight: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 2, fontSize: 10, fontWeight: 700 }}>{e.v}</div>
-                <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 4 }}>{e.d.slice(5)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+// بطاقة إحصائية يومية
+function DailyStat({ icon, label, val, max, unit, color, sub }) {
+  const pct = Math.min(100, max ? (val / max) * 100 : 0)
+  return (
+    <div style={{ ...card, padding: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{icon} {label}</span>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color }}>{val >= 1000 ? val.toLocaleString() : val}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}> / {max >= 1000 ? (max / 1000).toFixed(1) + 'ك' : max}{unit}</span></div>
+      <div style={{ height: 6, background: 'var(--card2)', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: '.4s' }} />
+      </div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>🔥 {sub}</div>}
+    </div>
+  )
+}
+
+// رسم بياني منحني لتطور الوزن
+function WeightChart({ weights, profile, goal }) {
+  const data = [...weights].reverse().slice(-12)
+  if (data.length < 2) {
+    return (
+      <div style={{ ...card, marginTop: 12, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+        📈 سجّل وزنك أكثر من مرة عشان يطلع لك رسم التطور
+      </div>
+    )
+  }
+  const W = 320, H = 140, pad = 24
+  const vals = data.map(d => d.v)
+  const mn = Math.min(...vals), mx = Math.max(...vals)
+  const rng = (mx - mn) || 1
+  const x = i => pad + (i / (data.length - 1)) * (W - pad * 2)
+  const y = v => pad + (1 - (v - mn) / rng) * (H - pad * 2)
+  const pts = data.map((d, i) => [x(i), y(d.v)])
+  // مسار منحني ناعم
+  let path = `M ${pts[0][0]} ${pts[0][1]}`
+  for (let i = 1; i < pts.length; i++) {
+    const [px, py] = pts[i - 1], [cx, cy] = pts[i]
+    const mx2 = (px + cx) / 2
+    path += ` C ${mx2} ${py}, ${mx2} ${cy}, ${cx} ${cy}`
+  }
+  const area = path + ` L ${pts[pts.length - 1][0]} ${H - pad} L ${pts[0][0]} ${H - pad} Z`
+  return (
+    <div style={{ ...card, marginTop: 12 }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>📈 تطور الوزن</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={goal.color} stopOpacity=".35" />
+            <stop offset="100%" stopColor={goal.color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#wg)" />
+        <path d={path} fill="none" stroke={goal.color} strokeWidth="2.5" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={p[0]} cy={p[1]} r="3.5" fill={goal.color} />
+            <text x={p[0]} y={p[1] - 8} textAnchor="middle" fontSize="9" fill="var(--text)" fontWeight="700">{data[i].v}</text>
+            <text x={p[0]} y={H - 8} textAnchor="middle" fontSize="8" fill="var(--muted)">{data[i].d.slice(5)}</text>
+          </g>
+        ))}
+      </svg>
     </div>
   )
 }
@@ -1212,6 +1289,121 @@ function BMICard({ profile }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
         <span>15</span><span>18.5</span><span>25</span><span>30</span><span>40</span>
+      </div>
+    </div>
+  )
+}
+
+// ============ الإعدادات ============
+function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target }) {
+  const [editProfile, setEditProfile] = useState(false)
+  const [editGoals, setEditGoals] = useState(false)
+  const [pf, setPf] = useState({ ...profile })
+  const [wg, setWg] = useState(waterGoal)
+  const [sg, setSg] = useState(stepsGoal)
+
+  function saveProfile() {
+    setProfile({ ...profile, weight: +pf.weight || profile.weight, height: +pf.height || profile.height, age: +pf.age || profile.age, gender: pf.gender, activity: +pf.activity })
+    setEditProfile(false)
+  }
+  function saveGoals() { setWaterGoal(+wg || waterGoal); setStepsGoal(+sg || stepsGoal); setEditGoals(false) }
+  function resetToday() {
+    if (!confirm('تصفير بيانات اليوم (وجبات، ماء، خطوات، تمارين)؟')) return
+    ;['meals', 'water', 'steps', 'burned', 'workoutsDone'].forEach(k => localStorage.setItem(k, JSON.stringify(k === 'meals' || k === 'workoutsDone' ? [] : 0)))
+    location.reload()
+  }
+  function resetAll() {
+    if (!confirm('⚠️ مسح كل بياناتك نهائياً والبدء من جديد؟')) return
+    localStorage.clear(); location.reload()
+  }
+
+  const Section = ({ title, children }) => (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>{title}</div>
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>{children}</div>
+    </div>
+  )
+  const Row = ({ icon, color, title, sub, onClick, danger, last }) => (
+    <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: 'transparent', borderBottom: last ? 'none' : '1px solid var(--border)', textAlign: 'right' }}>
+      <div style={{ width: 40, height: 40, borderRadius: 11, background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>{icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: danger ? '#ef4444' : 'var(--text)' }}>{title}</div>
+        {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{sub}</div>}
+      </div>
+      <span style={{ color: 'var(--muted)', fontSize: 18 }}>‹</span>
+    </button>
+  )
+
+  return (
+    <div className="fade">
+      <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>الإعدادات</div>
+
+      {/* بانر مميز */}
+      <div style={{ ...card, marginTop: 14, background: `linear-gradient(135deg, ${goal.color}, ${goal.color}99)`, border: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ fontSize: 32 }}>✦</div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>صحّتي — نسختك الكاملة</div>
+          <div style={{ fontSize: 12, color: '#ffffffcc' }}>كل المميزات مفتوحة ومجانية 🎉</div>
+        </div>
+      </div>
+
+      {/* الملف الشخصي */}
+      <Section title="الملف الشخصي">
+        <Row icon="🎯" color={goal.color} title="تغيير الهدف" sub={`${goal.emoji} ${goal.name}`} onClick={() => setGoalId(null)} />
+        {!editProfile ? (
+          <Row icon="📊" color="#3b82f6" title="تعديل بياناتك" sub={`${profile.weight}كجم · ${profile.height}سم · ${profile.age}سنة · ${target} سعرة`} onClick={() => { setPf({ ...profile }); setEditProfile(true) }} last />
+        ) : (
+          <div style={{ padding: 14, borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              {[['weight', 'وزن'], ['height', 'طول'], ['age', 'عمر']].map(([k, l]) => (
+                <div key={k}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{l}</div>
+                  <input value={pf[k]} onChange={e => setPf({ ...pf, [k]: e.target.value })} type="number" style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 15, textAlign: 'center' }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', margin: '10px 0 4px' }}>النشاط</div>
+            <div style={{ display: 'grid', gap: 5 }}>
+              {[[1.2, 'قليل'], [1.375, 'خفيف'], [1.55, 'متوسط'], [1.725, 'عالي']].map(([v, l]) => (
+                <button key={v} onClick={() => setPf({ ...pf, activity: v })} style={{ ...seg, fontSize: 13, padding: 9, ...(+pf.activity === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={saveProfile} style={{ flex: 1, ...primaryBtn, background: goal.color }}>حفظ</button>
+              <button onClick={() => setEditProfile(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>إلغاء</button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* الأهداف */}
+      <Section title="الأهداف اليومية">
+        {!editGoals ? <>
+          <Row icon="💧" color="#3b82f6" title="هدف الماء" sub={`${waterGoal} مل يومياً`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
+          <Row icon="👟" color="#a855f7" title="هدف الخطوات" sub={`${stepsGoal.toLocaleString()} خطوة يومياً`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
+          <Row icon="❤️" color="#ef4444" title="ربط Apple Health" sub="يحتاج تطبيق آيفون (قريباً)" onClick={() => alert('ربط Apple Health يحتاج النسخة الأصلية على آيفون — قريباً 🍏')} last />
+        </> : (
+          <div style={{ padding: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>💧 هدف الماء (مل)</div>
+            <input value={wg} onChange={e => setWg(e.target.value)} type="number" style={{ width: '100%', padding: 11, borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', marginBottom: 10 }} />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>👟 هدف الخطوات</div>
+            <input value={sg} onChange={e => setSg(e.target.value)} type="number" style={{ width: '100%', padding: 11, borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={saveGoals} style={{ flex: 1, ...primaryBtn, background: goal.color }}>حفظ</button>
+              <button onClick={() => setEditGoals(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>إلغاء</button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* البيانات */}
+      <Section title="البيانات">
+        <Row icon="🔄" color="#f59e0b" title="تصفير بيانات اليوم" sub="يبدأ يومك من جديد" onClick={resetToday} />
+        <Row icon="🗑️" color="#ef4444" title="مسح كل البيانات" sub="إعادة ضبط كاملة" onClick={resetAll} danger last />
+      </Section>
+
+      <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 12, marginTop: 22 }}>
+        صحّتي · الإصدار 1.0 🥗<br />صُنع بحب لك 💚
       </div>
     </div>
   )

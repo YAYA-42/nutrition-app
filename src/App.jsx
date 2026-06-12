@@ -182,7 +182,7 @@ export default function App() {
 function Onboarding({ goalId, setGoalId, setProfile }) {
   const [step, setStep] = useState(goalId ? 1 : 0)
   const [g, setG] = useState(goalId)
-  const [form, setForm] = useState({ weight: '', height: '', age: '', gender: 'male', activity: 1.375 })
+  const [form, setForm] = useState({ weight: '', height: '', age: '', gender: 'male', activity: 1.375, targetWeight: '', weeks: '' })
 
   if (step === 0) {
     return (
@@ -242,7 +242,40 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
             ))}
           </div>
         </div>
-        <button disabled={!valid} onClick={() => setProfile({ ...form, weight: +form.weight, height: +form.height, age: +form.age })}
+
+        {/* هدف الوزن والمدة (لغير التثبيت) */}
+        {g !== 'maintain' && (
+          <div style={{ ...card, background: `${goal.color}11`, border: `1px solid ${goal.color}44` }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>🎯 هدفك</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <div style={lbl}>{g === 'lose' ? 'الوزن المطلوب' : 'الوزن الهدف'} (كجم)</div>
+                <input value={form.targetWeight} onChange={e => setForm({ ...form, targetWeight: e.target.value })} type="number" placeholder={g === 'lose' ? 'أقل' : 'أكثر'}
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
+              </div>
+              <div>
+                <div style={lbl}>خلال كم أسبوع؟</div>
+                <input value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} type="number" placeholder="مثلاً 12"
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
+              </div>
+            </div>
+            {form.targetWeight && form.weight && form.weeks && (
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10, textAlign: 'center', lineHeight: 1.7 }}>
+                {(() => {
+                  const diff = Math.abs(+form.weight - +form.targetWeight)
+                  const perWeek = (diff / +form.weeks).toFixed(2)
+                  const safe = perWeek <= 1
+                  return <span style={{ color: safe ? '#22c55e' : '#f59e0b' }}>
+                    {safe ? '✅' : '⚠️'} {g === 'lose' ? 'تنزل' : 'تزيد'} {perWeek} كجم بالأسبوع
+                    {!safe && ' — معدّل سريع، يُفضّل تمدّد المدة'}
+                  </span>
+                })()}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button disabled={!valid} onClick={() => setProfile({ ...form, weight: +form.weight, height: +form.height, age: +form.age, targetWeight: +form.targetWeight || 0, weeks: +form.weeks || 0, startWeight: +form.weight })}
           style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 6 }}>
           يلا نبدأ 🚀
         </button>
@@ -324,17 +357,7 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
       {/* الماء (دائري) + الخطوات */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
         {/* الماء */}
-        <div style={{ ...card, textAlign: 'center', padding: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>💧 الماء</div>
-          <WaterGauge value={water} max={waterGoal} />
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر</div>
-          <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-            {[[200, 'كوب'], [500, '½ل']].map(([ml, l]) => (
-              <button key={ml} onClick={() => setWater(w => w + ml)} style={{ flex: 1, padding: '7px 2px', borderRadius: 10, background: '#3b82f622', color: '#60a5fa', fontSize: 12, fontWeight: 700, border: '1px solid #3b82f644' }}>+{l}</button>
-            ))}
-            {water > 0 && <button onClick={() => setWater(w => Math.max(0, w - 200))} style={{ padding: '7px 9px', borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 13 }}>↩️</button>}
-          </div>
-        </div>
+        <WaterCard water={water} setWater={setWater} waterGoal={waterGoal} />
         {/* الخطوات */}
         <div style={{ ...card, textAlign: 'center', padding: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>👟 الخطوات</div>
@@ -409,6 +432,47 @@ function MacroCard({ label, emoji, val, goal, color }) {
   )
 }
 
+// كرت الماء — خيارات كثيرة + كمية يدوية
+function WaterCard({ water, setWater, waterGoal }) {
+  const [custom, setCustom] = useState('')
+  const [showCustom, setShowCustom] = useState(false)
+  const add = (ml) => setWater(w => Math.max(0, w + ml))
+  return (
+    <div style={{ ...card, textAlign: 'center', padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>💧 الماء</div>
+      <WaterGauge value={water} max={waterGoal} />
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر</div>
+
+      {/* خيارات الأحجام */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 8 }}>
+        {[[150, '🥃 كاس', 150], [250, '🥤 كوب', 250], [330, '🥫 علبة', 330], [500, '💧 ½ لتر', 500]].map(([ml, l]) => (
+          <button key={ml} onClick={() => add(ml)} style={{ padding: '8px 2px', borderRadius: 10, background: '#3b82f622', color: '#60a5fa', fontSize: 12, fontWeight: 700, border: '1px solid #3b82f644' }}>{l}</button>
+        ))}
+      </div>
+
+      {/* كمية يدوية */}
+      {showCustom ? (
+        <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
+          <input value={custom} onChange={e => setCustom(e.target.value)} type="number" placeholder="مل"
+            style={{ flex: 1, padding: '8px 10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 13, width: '100%' }} />
+          <button onClick={() => { if (+custom) add(+custom); setCustom(''); setShowCustom(false) }}
+            style={{ padding: '8px 12px', borderRadius: 10, background: '#3b82f6', color: '#fff', fontSize: 13, fontWeight: 700 }}>أضف</button>
+        </div>
+      ) : (
+        <button onClick={() => setShowCustom(true)} style={{ width: '100%', marginTop: 6, padding: 7, borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 12, border: '1px solid var(--border)' }}>✏️ كمية يدوية</button>
+      )}
+
+      {/* تراجع / تصفير */}
+      {water > 0 && (
+        <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
+          <button onClick={() => add(-250)} style={{ flex: 1, padding: 7, borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 12 }}>↩️ −كوب</button>
+          <button onClick={() => setWater(0)} style={{ flex: 1, padding: 7, borderRadius: 10, background: 'var(--card2)', color: '#ef4444', fontSize: 12 }}>🗑️ صفّر</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // عدّاد ماء دائري
 function WaterGauge({ value, max }) {
   const pct = Math.min(100, (value / max) * 100)
@@ -462,11 +526,26 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) 
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
-      const b64 = reader.result.split(',')[1]
-      sendAI([
-        { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: b64 } },
-        { type: 'text', text: config.photoText }
-      ], '📷 صورت وجبة', ctx)
+      // نصغّر الصورة قبل الإرسال (عشان ما تفشل من الحجم الكبير)
+      const img = new Image()
+      img.onload = () => {
+        const maxDim = 1024
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height)
+          width = Math.round(width * ratio); height = Math.round(height * ratio)
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        const small = canvas.toDataURL('image/jpeg', 0.8)
+        const b64 = small.split(',')[1]
+        sendAI([
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+          { type: 'text', text: config.photoText }
+        ], '📷 صورت وجبة', ctx)
+      }
+      img.src = reader.result
     }
     reader.readAsDataURL(file)
     e.target.value = ''
@@ -550,45 +629,80 @@ function Workout({ logWorkout, profile, goal, thread, loading, sendAI, clearThre
       {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.workout} />}
 
       {view === 'library' && <>
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 0', marginBottom: 4 }}>
-        {Object.entries(EXERCISES).map(([id, m]) => (
-          <button key={id} onClick={() => setMuscle(id)}
-            style={{ ...chip, whiteSpace: 'nowrap', ...(muscle === id ? { background: goal.color, color: '#fff' } : {}) }}>
-            {m.emoji} {m.name}
-          </button>
-        ))}
+      {/* كروت العضلات الملوّنة */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+        {Object.entries(EXERCISES).map(([id, m]) => {
+          const on = muscle === id
+          return (
+            <button key={id} onClick={() => { setMuscle(id); setOpen(null) }}
+              style={{
+                borderRadius: 16, padding: '12px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                background: on ? m.color : `${m.color}1a`,
+                border: `1.5px solid ${on ? m.color : m.color + '44'}`,
+                color: on ? '#fff' : 'var(--text)', transition: '.2s',
+              }}>
+              <span style={{ fontSize: 26 }}>{m.emoji}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{m.name}</span>
+              <span style={{ fontSize: 9, color: on ? '#ffffffcc' : 'var(--muted)' }}>{m.items.length} تمارين</span>
+            </button>
+          )
+        })}
       </div>
+
+      {/* فلتر المكان */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {[['all', 'الكل'], ['home', '🏠 بيت'], ['gym', '🏋️ نادي']].map(([v, l]) => (
           <button key={v} onClick={() => setPlace(v)}
-            style={{ ...seg, ...(place === v ? { background: 'var(--card2)', color: '#fff' } : {}) }}>{l}</button>
+            style={{ ...seg, ...(place === v ? { background: ex.color, color: '#fff', borderColor: ex.color } : {}) }}>{l}</button>
         ))}
       </div>
 
-      {items.map((e, i) => (
-        <div key={i} style={{ ...card, marginBottom: 8 }}>
-          <div onClick={() => setOpen(open === e.name ? null : e.name)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>{e.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{e.target} · {e.level} · {e.place === 'home' ? '🏠' : '🏋️'}</div>
+      {/* عنوان القسم */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '0 4px' }}>
+        <span style={{ fontSize: 24 }}>{ex.emoji}</span>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>تمارين {ex.name}</span>
+      </div>
+
+      {items.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 20 }}>ما فيه تمارين {place === 'home' ? 'بيت' : 'نادي'} هنا — جرّب "الكل"</div>}
+
+      {items.map((e, i) => {
+        const isOpen = open === e.name
+        return (
+          <div key={i} style={{ ...card, marginBottom: 8, padding: 0, overflow: 'hidden', borderRight: `4px solid ${ex.color}` }}>
+            <div onClick={() => setOpen(isOpen ? null : e.name)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: 14 }}>
+              {/* أيقونة التمرين */}
+              <div style={{ width: 50, height: 50, borderRadius: 14, background: `${ex.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
+                {e.emoji}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{e.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span>🎯 {e.target}</span>
+                  <span>{e.place === 'home' ? '🏠 بيت' : '🏋️ نادي'}</span>
+                </div>
+              </div>
+              <span style={{ color: ex.color, fontWeight: 800 }}>{isOpen ? '−' : '+'}</span>
             </div>
-            <span style={{ color: 'var(--muted)' }}>{open === e.name ? '▲' : '▼'}</span>
+            {isOpen && (
+              <div className="fade" style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'inline-block', background: `${ex.color}22`, color: ex.color, padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, marginTop: 12 }}>
+                  المستوى: {e.level}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 13, margin: '12px 0 6px' }}>📋 خطوات الأداء:</div>
+                <ol style={{ paddingRight: 18, fontSize: 14, lineHeight: 1.9, color: '#cbd5e1' }}>
+                  {e.steps.map((s, j) => <li key={j}>{s}</li>)}
+                </ol>
+                <div style={{ background: '#f59e0b22', padding: 10, borderRadius: 10, fontSize: 13, marginTop: 10 }}>⚠️ {e.tip}</div>
+                <button onClick={() => { const c = logWorkout(e); setDone({ ...done, [e.name]: c }) }}
+                  style={{ ...primaryBtn, background: done[e.name] ? '#16a34a' : ex.color, marginTop: 12 }}>
+                  {done[e.name] ? `✅ سجّلت (${done[e.name]} سعرة محروقة)` : '🔥 سويته — احسب الحرق'}
+                </button>
+              </div>
+            )}
           </div>
-          {open === e.name && (
-            <div className="fade" style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>خطوات الأداء:</div>
-              <ol style={{ paddingRight: 18, fontSize: 14, lineHeight: 1.9, color: '#cbd5e1' }}>
-                {e.steps.map((s, j) => <li key={j}>{s}</li>)}
-              </ol>
-              <div style={{ background: '#f59e0b22', padding: 10, borderRadius: 10, fontSize: 13, marginTop: 10 }}>⚠️ {e.tip}</div>
-              <button onClick={() => { const c = logWorkout(e); setDone({ ...done, [e.name]: c }) }}
-                style={{ ...primaryBtn, background: done[e.name] ? '#16a34a' : goal.color, marginTop: 12 }}>
-                {done[e.name] ? `✅ سجّلت (${done[e.name]} سعرة)` : 'سويته ✓'}
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+        )
+      })}
       </>}
     </div>
   )
@@ -653,6 +767,9 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
         <div style={{ fontSize: 32, fontWeight: 800, color: goal.color }}>{target} <span style={{ fontSize: 16, color: 'var(--muted)' }}>سعرة</span></div>
       </div>
 
+      {/* هدف الوزن */}
+      {profile.targetWeight > 0 && <GoalCard profile={profile} goal={goal} />}
+
       {/* مؤشر كتلة الجسم BMI */}
       <BMICard profile={profile} />
 
@@ -678,6 +795,37 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ============ بطاقة هدف الوزن ============
+function GoalCard({ profile, goal }) {
+  const start = profile.startWeight || profile.weight
+  const cur = profile.weight
+  const tgt = profile.targetWeight
+  const totalDiff = Math.abs(start - tgt) || 1
+  const doneDiff = Math.abs(start - cur)
+  const pct = Math.min(100, Math.round((doneDiff / totalDiff) * 100))
+  const remain = Math.abs(cur - tgt).toFixed(1)
+  return (
+    <div style={{ ...card, marginTop: 12, background: `linear-gradient(135deg, ${goal.color}22, var(--card))` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontWeight: 700 }}>🎯 هدفك</span>
+        <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{pct}% ✓</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
+        <span style={{ color: 'var(--muted)' }}>البداية <b style={{ color: 'var(--text)' }}>{start}</b></span>
+        <span style={{ color: 'var(--muted)' }}>الحالي <b style={{ color: goal.color }}>{cur}</b></span>
+        <span style={{ color: 'var(--muted)' }}>الهدف <b style={{ color: 'var(--text)' }}>{tgt}</b></span>
+      </div>
+      <div style={{ height: 12, background: 'var(--card2)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}aa)`, borderRadius: 8, transition: '.4s' }} />
+      </div>
+      <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginTop: 10 }}>
+        باقي لك <b style={{ color: goal.color }}>{remain} كجم</b>
+        {profile.weeks > 0 && <span> · المدة {profile.weeks} أسبوع</span>}
+      </div>
     </div>
   )
 }

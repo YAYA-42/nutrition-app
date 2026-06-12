@@ -74,7 +74,7 @@ export default function App() {
   const baseSystem = `أنت مدرب صحي وغذائي ورياضي سعودي ودود، تتكلم باللهجة الخليجية البسيطة وكأنك صديق. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً. كن مختصر، عملي، ومحفّز، واسأله لو احتجت توضيح.`
 
   const SYSTEMS = {
-    food: baseSystem + `\nتخصصك هنا: حساب الأكل فقط. إذا ذكر أو صوّر وجبة، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]. تعرف الأكل السعودي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المعصوب، التمر (~٢٠/حبة).`,
+    food: baseSystem + `\nتخصصك هنا: حساب الأكل فقط. إذا ذكر أو صوّر وجبة، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون|نوع الوجبة[/MEAL]. نوع الوجبة لازم يكون واحد من: فطور أو غداء أو عشاء أو سناك — خمّنه من كلام المستخدم (لو قال فطور حطها فطور) أو من نوع الأكل. تعرف الأكل السعودي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المعصوب، التمر (~٢٠/حبة).`,
     workout: baseSystem + `\nتخصصك هنا: التمارين فقط. اعطه تمرين/خطة واضحة فيها: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه، وشرح مختصر للأداء الصحيح. لو احتجت تعرف مستواه أو أدواته (بيت/نادي) اسأله. وفي نهاية ردك، لكل تمرين أعطيته، أضف سطر بالشكل: [EX]اسم التمرين|السعرات المحروقة التقريبية[/EX] (عشان يقدر يثبّتها).`,
     recipes: baseSystem + `\nتخصصك هنا: الوصفات فقط. اسأله وش مشتهي أو وش عنده مكوّنات، واقترح وصفة على ذوقه بمقادير وخطوات وسعرات. أرجع في النهاية سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]`,
   }
@@ -117,8 +117,9 @@ export default function App() {
       let logItems = null
       const mealMatch = reply.match(/\[MEAL\](.*?)\[\/MEAL\]/s)
       if (mealMatch) {
-        const [name, cal, p, c, f] = mealMatch[1].split('|').map(s => s.trim())
-        addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0 })
+        const [name, cal, p, c, f, mtype] = mealMatch[1].split('|').map(s => s.trim())
+        const validType = ['فطور', 'غداء', 'عشاء', 'سناك'].includes(mtype) ? mtype : undefined
+        addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0, ...(validType ? { type: validType } : {}) })
       }
       const recMatch = reply.match(/\[RECIPE\](.*?)\[\/RECIPE\]/s)
       if (recMatch) {
@@ -474,8 +475,9 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
 function MealRow({ m, goal, delMeal, editMeal }) {
   const [edit, setEdit] = useState(false)
   const [f, setF] = useState({ name: m.name, cal: m.cal, p: m.p, c: m.c, fat: m.f })
+  const [type, setType] = useState(m.type || guessType())
   function save() {
-    editMeal(m.id, { name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0 })
+    editMeal(m.id, { name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0, type })
     setEdit(false)
   }
   if (edit) {
@@ -492,7 +494,8 @@ function MealRow({ m, goal, delMeal, editMeal }) {
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <div style={{ marginTop: 10 }}><MealTypePicker value={type} onChange={setType} color={goal.color} /></div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
           <button onClick={save} style={{ flex: 1, padding: 9, borderRadius: 10, background: goal.color, color: '#fff', fontWeight: 700, fontSize: 14 }}>✅ حفظ</button>
           <button onClick={() => setEdit(false)} style={{ padding: '9px 16px', borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 14 }}>إلغاء</button>
         </div>
@@ -631,6 +634,7 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
 // إدخال يدوي
 function ManualEntry({ goal, onAdd, back }) {
   const [f, setF] = useState({ name: '', cal: '', p: '', c: '', fat: '' })
+  const [type, setType] = useState(guessType())
   const valid = f.name && f.cal
   return (
     <>
@@ -640,7 +644,7 @@ function ManualEntry({ goal, onAdd, back }) {
       </div>
       <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="اسم الوجبة (مثلاً: شاورما)"
         style={{ width: '100%', padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, marginBottom: 10 }} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         {[['cal', 'السعرات 🔥'], ['p', 'بروتين (g)'], ['c', 'كارب (g)'], ['fat', 'دهون (g)']].map(([k, l]) => (
           <div key={k}>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{l}</div>
@@ -649,28 +653,32 @@ function ManualEntry({ goal, onAdd, back }) {
           </div>
         ))}
       </div>
-      <button disabled={!valid} onClick={() => onAdd({ name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0 })}
+      <MealTypePicker value={type} onChange={setType} color={goal.color} />
+      <button disabled={!valid} onClick={() => onAdd({ name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0, type })}
         style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 16 }}>✅ أضف الوجبة</button>
     </>
   )
 }
 
-// باركود — بحث في قاعدة OpenFoodFacts المجانية
+// باركود — سكانر كاميرا + بحث OpenFoodFacts
 function BarcodeEntry({ goal, onAdd, back }) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
+  const [type, setType] = useState(guessType())
+  const [scanning, setScanning] = useState(false)
 
-  async function lookup() {
-    if (!code.trim()) return
-    setLoading(true); setErr(''); setResult(null)
+  async function lookup(c) {
+    const q = (c || code).toString().trim()
+    if (!q) return
+    setScanning(false)
+    setLoading(true); setErr(''); setResult(null); setCode(q)
     try {
-      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code.trim()}.json`)
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${q}.json`)
       const d = await r.json()
       if (d.status !== 1 || !d.product) { setErr('ما لقيت المنتج — جرّب رقم ثاني أو أدخله يدوياً'); setLoading(false); return }
-      const p = d.product
-      const n = p.nutriments || {}
+      const p = d.product, n = p.nutriments || {}
       setResult({
         name: p.product_name_ar || p.product_name || 'منتج',
         cal: Math.round(n['energy-kcal_100g'] || n['energy-kcal_serving'] || 0),
@@ -684,15 +692,27 @@ function BarcodeEntry({ goal, onAdd, back }) {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
         <span style={{ fontWeight: 800, fontSize: 18 }}>▦ باركود المنتج</span>
       </div>
-      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>اكتب رقم الباركود من خلف المنتج (القيم لكل 100 جرام)</div>
+
+      {/* السكانر */}
+      {scanning ? (
+        <BarcodeScanner goal={goal} onDetected={(c) => lookup(c)} onClose={() => setScanning(false)} />
+      ) : (
+        <button onClick={() => { setErr(''); setResult(null); setScanning(true) }}
+          style={{ ...primaryBtn, background: goal.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
+          📷 امسح الباركود بالكاميرا
+        </button>
+      )}
+
+      {/* إدخال يدوي للرقم */}
+      <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 6px', textAlign: 'center' }}>أو اكتب الرقم يدوياً</div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={code} onChange={e => setCode(e.target.value)} type="number" placeholder="مثال: 6281006..." onKeyDown={e => e.key === 'Enter' && lookup()}
           style={{ flex: 1, padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, width: '100%' }} />
-        <button onClick={lookup} disabled={loading} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: goal.color }}>{loading ? '...' : 'بحث'}</button>
+        <button onClick={() => lookup()} disabled={loading} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: 'var(--card2)' }}>{loading ? '...' : 'بحث'}</button>
       </div>
 
       {err && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
@@ -706,14 +726,82 @@ function BarcodeEntry({ goal, onAdd, back }) {
             <span style={{ color: '#3b82f6' }}>ك {result.c}g</span>
             <span style={{ color: '#22c55e' }}>د {result.f}g</span>
           </div>
-          <button onClick={() => onAdd(result)} style={{ ...primaryBtn, background: goal.color }}>✅ أضف للوجبات</button>
+          <div style={{ marginBottom: 12 }}><MealTypePicker value={type} onChange={setType} color={goal.color} /></div>
+          <button onClick={() => onAdd({ ...result, type })} style={{ ...primaryBtn, background: goal.color }}>✅ أضف للوجبات</button>
         </div>
       )}
     </>
   )
 }
 
+// سكانر الباركود بالكاميرا (BarcodeDetector)
+function BarcodeScanner({ goal, onDetected, onClose }) {
+  const videoRef = useRef(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let stream, raf, cancelled = false, detector
+    async function start() {
+      if (!('BarcodeDetector' in window)) { setErr('المتصفح ما يدعم المسح — اكتب الرقم يدوياً تحت') ; return }
+      try {
+        detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] })
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        const v = videoRef.current
+        if (!v) return
+        v.srcObject = stream
+        await v.play()
+        const tick = async () => {
+          if (cancelled) return
+          try {
+            const codes = await detector.detect(v)
+            if (codes && codes.length) { onDetected(codes[0].rawValue); return }
+          } catch { /* تجاهل */ }
+          raf = requestAnimationFrame(tick)
+        }
+        tick()
+      } catch { setErr('ما قدرت أفتح الكاميرا — تأكد من الإذن أو اكتب الرقم يدوياً') }
+    }
+    start()
+    return () => { cancelled = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()) }
+  }, [])
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', background: '#000', aspectRatio: '4/3' }}>
+        <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {/* إطار التوجيه */}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ width: '75%', height: 90, border: `2px solid ${goal.color}`, borderRadius: 12, boxShadow: '0 0 0 9999px rgba(0,0,0,.35)' }} />
+        </div>
+        {err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', fontSize: 13, color: '#fca5a5', background: 'rgba(0,0,0,.7)' }}>{err}</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>وجّه الكاميرا على الباركود 📷</span>
+        <button onClick={onClose} style={{ ...chip, padding: '6px 12px' }}>إيقاف</button>
+      </div>
+    </div>
+  )
+}
+
 function mealEmoji(t) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[t] || '🍴' }
+function guessType() { const h = new Date().getHours(); return h < 11 ? 'فطور' : h < 16 ? 'غداء' : h < 21 ? 'عشاء' : 'سناك' }
+
+// منتقي نوع الوجبة
+function MealTypePicker({ value, onChange, color }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>نوع الوجبة</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {['فطور', 'غداء', 'عشاء', 'سناك'].map(t => (
+          <button key={t} onClick={() => onChange(t)}
+            style={{ flex: 1, padding: '9px 2px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid var(--border)', background: value === t ? color : 'var(--card2)', color: value === t ? '#fff' : 'var(--muted)' }}>
+            {mealEmoji(t)} {t}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ============ حلقة الطاقة — القطعة المميزة ============
 function EnergyRing({ net, target, totals, burned, remaining, goal, pGoal, cGoal, fGoal }) {

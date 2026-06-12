@@ -26,6 +26,7 @@ export default function App() {
   const [meals, setMeals] = useState(() => load('meals', []))
   const [water, setWater] = useState(() => load('water', 0)) // بالمل (ml)
   const [steps, setSteps] = useState(() => load('steps', 0))
+  const [workoutsDone, setWorkoutsDone] = useState(() => load('workoutsDone', []))
   const waterGoal = 2500 // الهدف اليومي بالمل
   const stepsGoal = 6000
   const [burned, setBurned] = useState(() => load('burned', 0))
@@ -40,8 +41,8 @@ export default function App() {
   useEffect(() => {
     const t = todayKey()
     if (day !== t) {
-      setDay(t); setMeals([]); setWater(0); setBurned(0); setSteps(0)
-      save('day', t); save('meals', []); save('water', 0); save('burned', 0); save('steps', 0)
+      setDay(t); setMeals([]); setWater(0); setBurned(0); setSteps(0); setWorkoutsDone([])
+      save('day', t); save('meals', []); save('water', 0); save('burned', 0); save('steps', 0); save('workoutsDone', [])
     }
   }, [])
 
@@ -52,6 +53,7 @@ export default function App() {
   useEffect(() => save('water', water), [water])
   useEffect(() => save('burned', burned), [burned])
   useEffect(() => save('steps', steps), [steps])
+  useEffect(() => save('workoutsDone', workoutsDone), [workoutsDone])
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
   useEffect(() => save('threads', threads), [threads])
@@ -129,7 +131,16 @@ export default function App() {
     const w = profile?.weight || 70
     const cal = Math.round((ex.met * 3.5 * w / 200) * minutes)
     setBurned(b => b + cal)
+    const time = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+    setWorkoutsDone(x => [{ name: ex.name, emoji: ex.emoji, cal, time, id: Date.now() }, ...x])
     return cal
+  }
+  function delWorkoutDone(id) {
+    setWorkoutsDone(x => {
+      const found = x.find(w => w.id === id)
+      if (found) setBurned(b => Math.max(0, b - found.cal))
+      return x.filter(w => w.id !== id)
+    })
   }
 
   // ====== شاشة البداية: اختيار الهدف والملف ======
@@ -152,7 +163,7 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile, workoutsDone, delWorkoutDone }} />}
         {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
         {tab === 'workout' && <Workout {...{ logWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
@@ -285,7 +296,7 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 }
 
 // ============ الرئيسية (تصميم احترافي) ============
-function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile }) {
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile, workoutsDone, delWorkoutDone }) {
   const [macroView, setMacroView] = useState('eaten') // eaten | left
   const calPct = Math.min(100, (net / target) * 100)
   const show = macroView === 'eaten'
@@ -307,8 +318,31 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
   const order = ['فطور', 'غداء', 'عشاء', 'سناك']
   const groups = order.map(t => ({ type: t, items: meals.filter(m => m.type === t) })).filter(g => g.items.length)
 
+  const hr = new Date().getHours()
+  const greet = hr < 12 ? 'صباح الخير' : hr < 18 ? 'مساء الخير' : 'مساء الخير'
+
   return (
     <div className="fade">
+      {/* ترحيب + ملخص اليوم */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 20, fontWeight: 800 }}>{greet}! 👋</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>هذا ملخص يومك</div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {[
+          ['🍽️', meals.length, 'وجبات'],
+          ['🏋️', workoutsDone.length, 'تمارين'],
+          ['🔥', burned, 'محروق'],
+          ['👟', steps >= 1000 ? (steps / 1000).toFixed(1) + 'ك' : steps, 'خطوة'],
+        ].map(([ic, val, lbl], i) => (
+          <div key={i} style={{ flex: 1, ...card, padding: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 18 }}>{ic}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: goal.color }}>{val}</div>
+            <div style={{ fontSize: 9, color: 'var(--muted)' }}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+
       {/* شريط أيام الأسبوع */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between', marginBottom: 14 }}>
         {weekDays.map((d, i) => (
@@ -412,6 +446,27 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
           </div>
         )
       })}
+
+      {/* تمارين اليوم المنجزة */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 8 }}>
+        <span style={{ fontWeight: 800, fontSize: 17 }}>🏋️ تمارين اليوم ({workoutsDone.length})</span>
+        <button onClick={() => setTab('workout')} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ تمرّن</button>
+      </div>
+      {workoutsDone.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 20 }}>
+        ما سويت تمارين بعد 💪<br /><span style={{ fontSize: 13 }}>اضغط "+ تمرّن" واختر تمرينك</span>
+      </div>}
+      {workoutsDone.map(w => (
+        <div key={w.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: 12 }} className="pop">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#ef444422', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{w.emoji || '🏋️'}</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{w.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>🕐 {w.time} · 🔥 {w.cal} سعرة محروقة</div>
+            </div>
+          </div>
+          <button onClick={() => delWorkoutDone(w.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
+        </div>
+      ))}
     </div>
   )
 }

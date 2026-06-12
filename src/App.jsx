@@ -37,6 +37,7 @@ export default function App() {
   const [threads, setThreads] = useState(() => load('threads', { food: [], workout: [], recipes: [] }))
   const [loading, setLoading] = useState('')  // اسم الخانة اللي تحمّل حالياً
   const [addOpen, setAddOpen] = useState(false) // شيت تسجيل الوجبة
+  const pendingType = useRef(null) // نوع الوجبة المختار من الشيت (يطبّق على القادم)
 
   // ====== تصفير يومي ======
   useEffect(() => {
@@ -156,7 +157,10 @@ export default function App() {
   }
   function addMeal(m) {
     const time = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
-    setMeals(x => [{ ...m, id: Date.now(), time, type: m.type || mealType() }, ...x])
+    // أولوية النوع: اختيار المستخدم بالشيت > ما حدده الذكاء > التخمين بالوقت
+    const type = pendingType.current || m.type || mealType()
+    pendingType.current = null
+    setMeals(x => [{ ...m, id: Date.now(), time, type }, ...x])
   }
   function delMeal(id) { setMeals(x => x.filter(m => m.id !== id)) }
   function editMeal(id, patch) { setMeals(x => x.map(m => m.id === id ? { ...m, ...patch } : m)) }
@@ -203,7 +207,7 @@ export default function App() {
       </div>
 
       {/* شيت تسجيل الوجبة */}
-      {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} sendAI={sendAI} addMeal={addMeal} setTab={setTab} goal={goal} />}
+      {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} sendAI={sendAI} addMeal={addMeal} setTab={setTab} goal={goal} setPendingType={(t) => { pendingType.current = t }} />}
 
       {/* شريط التبويبات العائم */}
       <div style={nav}>
@@ -523,38 +527,20 @@ function MealRow({ m, goal, delMeal, editMeal }) {
 }
 
 // ============ شيت تسجيل وجبة (نص/صوت/صورة/باركود/يدوي) ============
-function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
-  const [mode, setMode] = useState('home') // home | manual | barcode
-  const [listening, setListening] = useState(false)
-  const [status, setStatus] = useState('')
+function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }) {
+  const [mode, setMode] = useState('home') // home | manual | barcode | voice
+  const [type, setType] = useState(guessType())
   const fileRef = useRef(null)
 
-  function go(fn) { fn(); }
   function finishToChat(text, content, display) {
+    setPendingType(type) // يثبّت نوع الوجبة المختار على القادم من الذكاء
     onClose(); setTab('chat')
     if (content) sendAI(content, display, 'food')
     else if (text) setTimeout(() => sendAI(text, undefined, 'food'), 80)
   }
 
-  // ✍️ نص — يفتح شات الأكل
-  const goText = () => { onClose(); setTab('chat') }
-
-  // 🎤 صوت — تعرّف على الكلام عربي
-  const goVoice = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { setStatus('جهازك ما يدعم الإدخال الصوتي — استخدم النص'); return }
-    const rec = new SR()
-    rec.lang = 'ar-SA'; rec.interimResults = false; rec.maxAlternatives = 1
-    setListening(true); setStatus('أتكلم الحين... 🎤')
-    rec.onresult = (e) => {
-      const txt = e.results[0][0].transcript
-      setListening(false)
-      finishToChat('أكلت ' + txt)
-    }
-    rec.onerror = () => { setListening(false); setStatus('ما سمعتك، حاول مرة ثانية') }
-    rec.onend = () => setListening(false)
-    rec.start()
-  }
+  // ✍️ نص — يفتح شات الأكل (مع تثبيت النوع)
+  const goText = () => { setPendingType(type); onClose(); setTab('chat') }
 
   // 📷 صورة — كاميرا + تصغير
   const onPhoto = (e) => {
@@ -580,15 +566,16 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
 
   const sheet = (children) => (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,.55)', animation: 'backdropIn .2s ease', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg)', borderRadius: '24px 24px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '12px 16px 24px', animation: 'sheetUp .3s cubic-bezier(.2,.8,.2,1)', maxHeight: '85vh', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg)', borderRadius: '24px 24px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '12px 16px 24px', animation: 'sheetUp .3s cubic-bezier(.2,.8,.2,1)', maxHeight: '88vh', overflowY: 'auto' }}>
         <div style={{ width: 40, height: 5, background: 'var(--card2)', borderRadius: 3, margin: '0 auto 16px' }} />
         {children}
       </div>
     </div>
   )
 
-  if (mode === 'manual') return sheet(<ManualEntry goal={goal} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
-  if (mode === 'barcode') return sheet(<BarcodeEntry goal={goal} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
+  if (mode === 'manual') return sheet(<ManualEntry goal={goal} type={type} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
+  if (mode === 'barcode') return sheet(<BarcodeEntry goal={goal} type={type} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
+  if (mode === 'voice') return sheet(<VoiceEntry goal={goal} onSend={(txt) => finishToChat('أكلت ' + txt)} back={() => setMode('home')} />)
 
   const opt = (emoji, title, sub, color, onClick) => (
     <button onClick={onClick} style={{ ...card, padding: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center' }}>
@@ -600,19 +587,22 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
 
   return sheet(<>
     <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 4 }}>سجّل وجبة جديدة</div>
-    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>اختر الطريقة اللي تريحك</div>
+    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>اختر النوع والطريقة</div>
+
+    {/* منتقي النوع — يطبّق على كل الطرق */}
+    <div style={{ marginBottom: 14 }}><MealTypePicker value={type} onChange={setType} color={goal.color} /></div>
 
     <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
     <div className="stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
       {opt('💬', 'نص', 'اكتب وجبتك', '#22c55e', goText)}
-      {opt('🎤', 'صوت', 'قول وجبتك', '#ec4899', goVoice)}
+      {opt('🎤', 'صوت', 'قول وجبتك', '#ec4899', () => setMode('voice'))}
       {opt('📷', 'صورة', 'صوّر وجبتك', '#f97316', () => fileRef.current?.click())}
     </div>
     <div style={{ marginTop: 10 }}>
       <button onClick={() => setMode('barcode')} style={{ ...card, width: '100%', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>▦ باركود المنتج</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>سجّل المنتجات المعلّبة بسرعة</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>امسح المنتجات المعلّبة بالكاميرا</div>
         </div>
         <div style={{ width: 46, height: 46, borderRadius: 14, background: '#6366f122', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📦</div>
       </button>
@@ -620,21 +610,71 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
     <button onClick={() => setMode('manual')} style={{ width: '100%', marginTop: 14, padding: 12, borderRadius: 12, background: 'transparent', color: goal.color, fontSize: 14, fontWeight: 700, border: `1px dashed ${goal.color}66` }}>
       ✏️ تعرف القيم الغذائية؟ أدخلها يدوياً
     </button>
-
-    {/* حالة الصوت */}
-    {(listening || status) && (
-      <div style={{ marginTop: 14, textAlign: 'center', padding: 14, borderRadius: 14, background: 'var(--card)' }}>
-        {listening && <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ec4899', margin: '0 auto 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, animation: 'micPulse 1.2s infinite' }}>🎤</div>}
-        <div style={{ fontSize: 14, color: 'var(--muted)' }}>{status}</div>
-      </div>
-    )}
   </>)
 }
 
+// 🎤 إدخال صوتي — يعرض الكلام وتعدّله وتتأكد قبل الإرسال
+function VoiceEntry({ goal, onSend, back }) {
+  const [text, setText] = useState('')
+  const [listening, setListening] = useState(false)
+  const [status, setStatus] = useState('اضغط المايك وقول وش أكلت')
+  const recRef = useRef(null)
+
+  function start() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { setStatus('جهازك ما يدعم الصوت — اكتب وجبتك تحت'); return }
+    const rec = new SR()
+    rec.lang = 'ar-SA'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3
+    recRef.current = rec
+    setListening(true); setStatus('أتكلم الحين... أسمعك 👂')
+    let final = ''
+    rec.onresult = (e) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) final += t; else interim += t
+      }
+      setText((final + ' ' + interim).trim())
+    }
+    rec.onerror = (e) => { setListening(false); setStatus(e.error === 'no-speech' ? 'ما سمعت شي، حاول مرة ثانية' : 'صار خطأ، حاول مرة ثانية') }
+    rec.onend = () => { setListening(false); setStatus(final ? 'تأكد من الكلام وعدّله لو فيه غلط ✏️' : 'ما سمعت شي، جرّب مرة ثانية') }
+    rec.start()
+  }
+  function stop() { try { recRef.current?.stop() } catch {} setListening(false) }
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>🎤 سجّل بصوتك</span>
+      </div>
+
+      {/* زر المايك */}
+      <div style={{ textAlign: 'center', marginBottom: 14 }}>
+        <button onClick={listening ? stop : start}
+          style={{ width: 88, height: 88, borderRadius: '50%', background: listening ? '#ef4444' : '#ec4899', color: '#fff', fontSize: 38, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: listening ? 'micPulse 1.2s infinite' : 'none' }}>
+          {listening ? '⏹️' : '🎤'}
+        </button>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10 }}>{status}</div>
+      </div>
+
+      {/* النص المعدّل */}
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>الكلام (عدّله لو فيه غلط):</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="مثلاً: صحن كبسة دجاج وسلطة"
+        style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, resize: 'none', fontFamily: 'inherit' }} />
+
+      <button disabled={!text.trim()} onClick={() => onSend(text.trim())}
+        style={{ ...primaryBtn, background: text.trim() ? goal.color : 'var(--card2)', opacity: text.trim() ? 1 : 0.5, marginTop: 14 }}>
+        ✅ احسب وسجّل
+      </button>
+    </>
+  )
+}
+
 // إدخال يدوي
-function ManualEntry({ goal, onAdd, back }) {
+function ManualEntry({ goal, onAdd, back, type: initType }) {
   const [f, setF] = useState({ name: '', cal: '', p: '', c: '', fat: '' })
-  const [type, setType] = useState(guessType())
+  const [type, setType] = useState(initType || guessType())
   const valid = f.name && f.cal
   return (
     <>
@@ -661,12 +701,12 @@ function ManualEntry({ goal, onAdd, back }) {
 }
 
 // باركود — سكانر كاميرا + بحث OpenFoodFacts
-function BarcodeEntry({ goal, onAdd, back }) {
+function BarcodeEntry({ goal, onAdd, back, type: initType }) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
-  const [type, setType] = useState(guessType())
+  const [type, setType] = useState(initType || guessType())
   const [scanning, setScanning] = useState(false)
 
   async function lookup(c) {

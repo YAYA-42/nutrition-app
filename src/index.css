@@ -104,6 +104,10 @@ input, textarea {
   50% { box-shadow: 0 0 0 16px #ec489900; }
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .fade { animation: fadeUp 0.3s ease both; }
 .pop { animation: pop 0.2s ease both; }
 .float-in { animation: floatIn .45s cubic-bezier(.2,.8,.2,1) both; }

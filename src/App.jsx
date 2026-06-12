@@ -75,7 +75,7 @@ export default function App() {
   const baseSystem = `أنت مدرب صحي وغذائي ورياضي سعودي ودود، تتكلم باللهجة الخليجية البسيطة وكأنك صديق. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً. كن مختصر، عملي، ومحفّز، واسأله لو احتجت توضيح.`
 
   const SYSTEMS = {
-    food: baseSystem + `\nتخصصك هنا: حساب الأكل فقط. إذا ذكر أو صوّر وجبة، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون|نوع الوجبة[/MEAL]. نوع الوجبة لازم يكون واحد من: فطور أو غداء أو عشاء أو سناك — خمّنه من كلام المستخدم (لو قال فطور حطها فطور) أو من نوع الأكل. تعرف الأكل السعودي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المعصوب، التمر (~٢٠/حبة).`,
+    food: baseSystem + `\nأنت مدرّب تغذية متابع. تخصصك: الإجابة على أسئلة المستخدم عن التغذية، تقديم نصائح واقتراحات أنظمة غذائية، تقييم أكله ومتابعة تقدّمه، وتحفيزه. تعرف الأكل السعودي والخليجي جيداً. لو طلب صراحةً تسجيل وجبة (قال "سجّل اني أكلت كذا")، احسبها وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL] — غير كذا لا تسجّل، فقط انصح وأجب. (التسجيل العادي عند المستخدم في زر "أضف وجبة").`,
     workout: baseSystem + `\nتخصصك هنا: التمارين فقط. اعطه تمرين/خطة واضحة فيها: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه، وشرح مختصر للأداء الصحيح. لو احتجت تعرف مستواه أو أدواته (بيت/نادي) اسأله. وفي نهاية ردك، لكل تمرين أعطيته، أضف سطر بالشكل: [EX]اسم التمرين|السعرات المحروقة التقريبية[/EX] (عشان يقدر يثبّتها).`,
     recipes: baseSystem + `\nتخصصك هنا: الوصفات فقط. اسأله وش مشتهي أو وش عنده مكوّنات، واقترح وصفة على ذوقه بمقادير وخطوات وسعرات. أرجع في النهاية سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]`,
   }
@@ -143,6 +143,26 @@ export default function App() {
     setLoading('')
   }
 
+  // حساب صامت لوجبة وإضافتها مباشرة (بدون فتح الشات)
+  async function computeMeal(content, forcedType) {
+    const sys = `أنت حاسبة سعرات دقيقة تعرف الأكل السعودي والخليجي (كبسة، جريش، مندي، معصوب، تمر). المستخدم يصف وجبة بالنص أو بصورة. احسب السعرات والبروتين والكارب والدهون. مهم جداً: أرجع سطر واحد فقط بدون أي كلام أو شرح إطلاقاً، بهذا الشكل بالضبط: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]`
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ system: sys, messages: [{ role: 'user', content }] })
+      })
+      if (!res.ok || !res.body) throw new Error()
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let reply = ''
+      while (true) { const { done, value } = await reader.read(); if (done) break; reply += dec.decode(value, { stream: true }) }
+      const m = reply.match(/\[MEAL\](.*?)\[\/MEAL\]/s)
+      if (!m) return { ok: false }
+      const [name, cal, p, c, f] = m[1].split('|').map(s => s.trim())
+      if (forcedType) pendingType.current = forcedType
+      addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0 })
+      return { ok: true, name, cal: +cal || 0 }
+    } catch { return { ok: false } }
+  }
+
   // تثبيت تمرين اقترحه المدرب
   function logAIWorkout(name, cal) {
     setBurned(b => b + cal)
@@ -207,7 +227,7 @@ export default function App() {
       </div>
 
       {/* شيت تسجيل الوجبة */}
-      {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} sendAI={sendAI} addMeal={addMeal} setTab={setTab} goal={goal} setPendingType={(t) => { pendingType.current = t }} />}
+      {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} addMeal={addMeal} goal={goal} computeMeal={computeMeal} />}
 
       {/* شريط التبويبات العائم */}
       <div style={nav}>
@@ -526,23 +546,24 @@ function MealRow({ m, goal, delMeal, editMeal }) {
   )
 }
 
-// ============ شيت تسجيل وجبة (نص/صوت/صورة/باركود/يدوي) ============
-function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }) {
-  const [mode, setMode] = useState('home') // home | manual | barcode | voice
+// ============ شيت تسجيل وجبة (مستقل — يحسب ويضيف بدون فتح المساعد) ============
+function AddMealSheet({ onClose, addMeal, goal, computeMeal }) {
+  const [mode, setMode] = useState('home') // home | text | voice | manual | barcode
   const [type, setType] = useState(guessType())
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(null) // {name, cal}
+  const [err, setErr] = useState('')
   const fileRef = useRef(null)
 
-  function finishToChat(text, content, display) {
-    setPendingType(type) // يثبّت نوع الوجبة المختار على القادم من الذكاء
-    onClose(); setTab('chat')
-    if (content) sendAI(content, display, 'food')
-    else if (text) setTimeout(() => sendAI(text, undefined, 'food'), 80)
+  // حساب صامت + إضافة مباشرة
+  async function compute(content) {
+    setBusy(true); setErr('')
+    const r = await computeMeal(content, type)
+    setBusy(false)
+    if (r.ok) { setDone(r); setTimeout(onClose, 1400) }
+    else setErr('ما قدرت أحسبها — جرّب وصف أوضح أو أدخلها يدوياً')
   }
-
-  // ✍️ نص — يفتح شات الأكل (مع تثبيت النوع)
-  const goText = () => { setPendingType(type); onClose(); setTab('chat') }
-
-  // 📷 صورة — كاميرا + تصغير
+  const sendText = (txt) => compute('أكلت ' + txt)
   const onPhoto = (e) => {
     const file = e.target.files?.[0]; if (!file) return
     const reader = new FileReader()
@@ -554,10 +575,10 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }
         const cv = document.createElement('canvas'); cv.width = width; cv.height = height
         cv.getContext('2d').drawImage(img, 0, 0, width, height)
         const b64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1]
-        finishToChat(null, [
+        compute([
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-          { type: 'text', text: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.' }
-        ], '📷 صورت وجبة')
+          { type: 'text', text: 'احسب سعرات هذا الأكل.' }
+        ])
       }
       img.src = reader.result
     }
@@ -566,16 +587,31 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }
 
   const sheet = (children) => (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,.55)', animation: 'backdropIn .2s ease', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg)', borderRadius: '24px 24px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '12px 16px 24px', animation: 'sheetUp .3s cubic-bezier(.2,.8,.2,1)', maxHeight: '88vh', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg)', borderRadius: '24px 24px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '12px 16px 24px', animation: 'sheetUp .3s cubic-bezier(.2,.8,.2,1)', maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
         <div style={{ width: 40, height: 5, background: 'var(--card2)', borderRadius: 3, margin: '0 auto 16px' }} />
         {children}
+        {/* طبقة الحساب / النجاح */}
+        {(busy || done) && (
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '24px 24px 0 0', background: 'rgba(11,17,32,.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            {busy && <>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', border: `4px solid ${goal.color}33`, borderTopColor: goal.color, animation: 'spin .8s linear infinite' }} />
+              <div style={{ color: 'var(--muted)' }}>أحسب سعراتك... 🧮</div>
+            </>}
+            {done && <>
+              <div style={{ fontSize: 50 }}>✅</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>تمت إضافة {done.name}</div>
+              <div style={{ color: goal.color, fontWeight: 700 }}>{done.cal} سعرة · {type}</div>
+            </>}
+          </div>
+        )}
       </div>
     </div>
   )
 
   if (mode === 'manual') return sheet(<ManualEntry goal={goal} type={type} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
   if (mode === 'barcode') return sheet(<BarcodeEntry goal={goal} type={type} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
-  if (mode === 'voice') return sheet(<VoiceEntry goal={goal} onSend={(txt) => finishToChat('أكلت ' + txt)} back={() => setMode('home')} />)
+  if (mode === 'text') return sheet(<TextEntry goal={goal} onSend={sendText} back={() => setMode('home')} err={err} />)
+  if (mode === 'voice') return sheet(<VoiceEntry goal={goal} onSend={sendText} back={() => setMode('home')} err={err} />)
 
   const opt = (emoji, title, sub, color, onClick) => (
     <button onClick={onClick} style={{ ...card, padding: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center' }}>
@@ -594,7 +630,7 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }
 
     <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
     <div className="stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-      {opt('💬', 'نص', 'اكتب وجبتك', '#22c55e', goText)}
+      {opt('💬', 'نص', 'اكتب وجبتك', '#22c55e', () => setMode('text'))}
       {opt('🎤', 'صوت', 'قول وجبتك', '#ec4899', () => setMode('voice'))}
       {opt('📷', 'صورة', 'صوّر وجبتك', '#f97316', () => fileRef.current?.click())}
     </div>
@@ -613,8 +649,29 @@ function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal, setPendingType }
   </>)
 }
 
-// 🎤 إدخال صوتي — يعرض الكلام وتعدّله وتتأكد قبل الإرسال
-function VoiceEntry({ goal, onSend, back }) {
+// ✍️ إدخال نصي — يحسب ويسجّل مباشرة
+function TextEntry({ goal, onSend, back, err }) {
+  const [text, setText] = useState('')
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>✍️ اكتب وجبتك</span>
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>صف وجبتك وأنا أحسب سعراتها</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} autoFocus placeholder="مثلاً: صحن كبسة دجاج وسلطة وكوب لبن"
+        style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, resize: 'none', fontFamily: 'inherit' }} />
+      {err && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
+      <button disabled={!text.trim()} onClick={() => onSend(text.trim())}
+        style={{ ...primaryBtn, background: text.trim() ? goal.color : 'var(--card2)', opacity: text.trim() ? 1 : 0.5, marginTop: 14 }}>
+        ✅ احسب وسجّل
+      </button>
+    </>
+  )
+}
+
+// 🎤 إدخال صوتي — يعرض الكلام وتعدّله وتتأكد قبل الحساب
+function VoiceEntry({ goal, onSend, back, err }) {
   const [text, setText] = useState('')
   const [listening, setListening] = useState(false)
   const [status, setStatus] = useState('اضغط المايك وقول وش أكلت')
@@ -648,8 +705,6 @@ function VoiceEntry({ goal, onSend, back }) {
         <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
         <span style={{ fontWeight: 800, fontSize: 18 }}>🎤 سجّل بصوتك</span>
       </div>
-
-      {/* زر المايك */}
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <button onClick={listening ? stop : start}
           style={{ width: 88, height: 88, borderRadius: '50%', background: listening ? '#ef4444' : '#ec4899', color: '#fff', fontSize: 38, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: listening ? 'micPulse 1.2s infinite' : 'none' }}>
@@ -657,12 +712,10 @@ function VoiceEntry({ goal, onSend, back }) {
         </button>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10 }}>{status}</div>
       </div>
-
-      {/* النص المعدّل */}
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>الكلام (عدّله لو فيه غلط):</div>
       <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="مثلاً: صحن كبسة دجاج وسلطة"
         style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, resize: 'none', fontFamily: 'inherit' }} />
-
+      {err && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
       <button disabled={!text.trim()} onClick={() => onSend(text.trim())}
         style={{ ...primaryBtn, background: text.trim() ? goal.color : 'var(--card2)', opacity: text.trim() ? 1 : 0.5, marginTop: 14 }}>
         ✅ احسب وسجّل
@@ -967,10 +1020,16 @@ function WaterCard({ water, setWater, waterGoal }) {
 // ============ إعدادات كل شات ============
 const CHAT_CONFIG = {
   food: {
-    icon: '🍽️', title: 'مساعد الأكل', placeholder: 'اكتب وجبتك...',
-    welcome: ['سولف معي عن أكلك!', '✍️ اكتب: "أكلت صحن كبسة"', '📷 أو صوّر أكلك وأنا أحسبه'],
-    photo: true, photoText: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.',
-    quick: QUICK_MEALS.slice(0, 5).map(q => ['أكلت ' + q, q]),
+    icon: '🥗', title: 'مدرّب التغذية', placeholder: 'اسأل عن نظامك الغذائي...',
+    welcome: ['أنا مدرّبك الغذائي 🥗', 'اسألني عن نظامك، نصائح، أو اقتراحات', 'وأتابع تقدّمك معك خطوة بخطوة'],
+    photo: true, photoText: 'صوّرت هذا الأكل، احسب لي سعراته وقيّمه لي.',
+    quick: [
+      ['كم أحتاج بروتين باليوم؟', '🥩 احتياج البروتين'],
+      ['اقترح لي نظام غذائي ليومي', '📋 نظام غذائي'],
+      ['وش أكل صحي للعشاء؟', '🌙 عشاء صحي'],
+      ['قيّم أكلي اليوم وش ناقص', '📊 قيّم يومي'],
+      ['أكلات تكسر الدهون', '🔥 حرق الدهون'],
+    ],
   },
   workout: {
     icon: '🏋️‍♂️', title: 'المدرب الذكي', placeholder: 'اسأل مدربك...',

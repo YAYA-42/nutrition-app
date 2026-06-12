@@ -199,20 +199,30 @@ export default function App() {
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
       </div>
 
-      {/* شريط التبويبات */}
+      {/* شريط التبويبات العائم */}
       <div style={nav}>
-        {[
-          ['home', '🏠', 'الرئيسية'],
-          ['chat', '💬', 'المساعد'],
-          ['workout', '🏋️', 'تمارين'],
-          ['recipes', '🍳', 'وصفات'],
-          ['progress', '📈', 'تقدمي'],
-        ].map(([id, ic, lb]) => (
-          <button key={id} onClick={() => setTab(id)} style={{ ...navBtn, color: tab === id ? goal.color : 'var(--muted)' }}>
-            <span style={{ fontSize: 22 }}>{ic}</span>
-            <span style={{ fontSize: 10, fontWeight: 700 }}>{lb}</span>
-          </button>
-        ))}
+        <div style={navPill}>
+          {[
+            ['home', '🏠', 'الرئيسية'],
+            ['chat', '💬', 'المساعد'],
+            ['workout', '🏋️', 'تمارين'],
+            ['recipes', '🍳', 'وصفات'],
+            ['progress', '📈', 'تقدمي'],
+          ].map(([id, ic, lb]) => {
+            const on = tab === id
+            return (
+              <button key={id} onClick={() => setTab(id)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  background: on ? goal.color : 'transparent', color: on ? '#fff' : 'var(--muted)',
+                  borderRadius: 14, padding: on ? '7px 12px' : '7px 8px', transition: '.2s',
+                }}>
+                <span style={{ fontSize: 19 }}>{ic}</span>
+                {on && <span style={{ fontSize: 10, fontWeight: 700 }}>{lb}</span>}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -1014,5 +1024,5 @@ const chip = { background: 'var(--card)', color: 'var(--text)', padding: '7px 14
 const seg = { flex: 1, padding: '11px', borderRadius: 12, background: 'var(--card)', color: 'var(--muted)', fontWeight: 600, border: '1px solid var(--border)' }
 const lbl = { fontSize: 13, color: 'var(--muted)', marginBottom: 6, fontWeight: 600 }
 const primaryBtn = { width: '100%', padding: '14px', borderRadius: 14, color: '#fff', fontSize: 16, fontWeight: 700 }
-const nav = { position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, display: 'flex', justifyContent: 'space-around', background: 'rgba(15,23,42,.85)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderTop: '1px solid var(--border)', padding: '8px 0 12px', zIndex: 50 }
-const navBtn = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'none', flex: 1 }
+const nav = { position: 'fixed', bottom: 12, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 440, display: 'flex', justifyContent: 'center', padding: '0 16px', zIndex: 50, pointerEvents: 'none' }
+const navPill = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, background: 'rgba(24,34,58,.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--border)', borderRadius: 22, padding: 6, boxShadow: '0 10px 30px -8px rgba(0,0,0,.5)', pointerEvents: 'auto' }

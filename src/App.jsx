@@ -72,7 +72,7 @@ export default function App() {
 
   const SYSTEMS = {
     food: baseSystem + `\nتخصصك هنا: حساب الأكل فقط. إذا ذكر أو صوّر وجبة، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]. تعرف الأكل السعودي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المعصوب، التمر (~٢٠/حبة).`,
-    workout: baseSystem + `\nتخصصك هنا: التمارين فقط. اعطه تمرين/خطة واضحة فيها: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه، وشرح مختصر للأداء الصحيح. لو احتجت تعرف مستواه أو أدواته (بيت/نادي) اسأله.`,
+    workout: baseSystem + `\nتخصصك هنا: التمارين فقط. اعطه تمرين/خطة واضحة فيها: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه، وشرح مختصر للأداء الصحيح. لو احتجت تعرف مستواه أو أدواته (بيت/نادي) اسأله. وفي نهاية ردك، لكل تمرين أعطيته، أضف سطر بالشكل: [EX]اسم التمرين|السعرات المحروقة التقريبية[/EX] (عشان يقدر يثبّتها).`,
     recipes: baseSystem + `\nتخصصك هنا: الوصفات فقط. اسأله وش مشتهي أو وش عنده مكوّنات، واقترح وصفة على ذوقه بمقادير وخطوات وسعرات. أرجع في النهاية سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]`,
   }
 
@@ -93,28 +93,56 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ system: SYSTEMS[ctx], messages: apiMsgs })
       })
-      if (!res.ok) throw new Error('api')
-      const data = await res.json()
-      let reply = data.reply || 'ما وصلني رد، حاول مرة ثانية'
+      if (!res.ok || !res.body) throw new Error('api')
 
+      // بث مباشر — نعرض النص وهو يكتب
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let reply = ''
+      // نظّف الوسوم من العرض الحي
+      const clean = (s) => s.replace(/\[(MEAL|RECIPE|EX)\][\s\S]*?(\[\/\1\]|$)/g, '').trim()
+      setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: '' }] }))
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        reply += decoder.decode(value, { stream: true })
+        const shown = clean(reply)
+        setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: shown || '...' }] }))
+      }
+
+      // بعد الانتهاء: استخراج الوسوم
+      let logItems = null
       const mealMatch = reply.match(/\[MEAL\](.*?)\[\/MEAL\]/s)
       if (mealMatch) {
         const [name, cal, p, c, f] = mealMatch[1].split('|').map(s => s.trim())
         addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0 })
-        reply = reply.replace(mealMatch[0], '').trim()
       }
       const recMatch = reply.match(/\[RECIPE\](.*?)\[\/RECIPE\]/s)
       if (recMatch) {
         const [name, cal, ing, steps] = recMatch[1].split('|').map(s => s.trim())
         setSavedRecipes(r => [{ name, cal: +cal || 0, ing: ing.split(','), steps: steps.split(','), id: Date.now() }, ...r])
-        reply = reply.replace(recMatch[0], '').trim()
+      }
+      // تمارين قابلة للتثبيت
+      const exMatches = [...reply.matchAll(/\[EX\](.*?)\[\/EX\]/gs)]
+      if (exMatches.length) {
+        logItems = exMatches.map(mm => {
+          const [name, cal] = mm[1].split('|').map(s => s.trim())
+          return { name, cal: +cal || 50 }
+        })
       }
 
-      setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: reply }] }))
+      setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: clean(reply) || 'تم ✅', ...(logItems ? { logItems } : {}) }] }))
     } catch {
       setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: '⚠️ صار خطأ بالاتصال، حاول مرة ثانية.' }] }))
     }
     setLoading('')
+  }
+
+  // تثبيت تمرين اقترحه المدرب
+  function logAIWorkout(name, cal) {
+    setBurned(b => b + cal)
+    const time = new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+    setWorkoutsDone(x => [{ name, emoji: '🏋️', cal, time, id: Date.now() }, ...x])
   }
 
   function clearThread(ctx) { setThreads(t => ({ ...t, [ctx]: [] })) }
@@ -127,6 +155,7 @@ export default function App() {
     setMeals(x => [{ ...m, id: Date.now(), time, type: m.type || mealType() }, ...x])
   }
   function delMeal(id) { setMeals(x => x.filter(m => m.id !== id)) }
+  function editMeal(id, patch) { setMeals(x => x.map(m => m.id === id ? { ...m, ...patch } : m)) }
   function logWorkout(ex, minutes = 20) {
     const w = profile?.weight || 70
     const cal = Math.round((ex.met * 3.5 * w / 200) * minutes)
@@ -163,9 +192,9 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile, workoutsDone, delWorkoutDone }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone }} />}
         {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
-        {tab === 'workout' && <Workout {...{ logWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
+        {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
       </div>
@@ -296,7 +325,7 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 }
 
 // ============ الرئيسية (تصميم احترافي) ============
-function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, setTab, profile, workoutsDone, delWorkoutDone }) {
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone }) {
   const [macroView, setMacroView] = useState('eaten') // eaten | left
   const calPct = Math.min(100, (net / target) * 100)
   const show = macroView === 'eaten'
@@ -427,21 +456,7 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
               <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{gt} سعرة</span>
             </div>
             {g.items.map(m => (
-              <div key={m.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: 12 }} className="pop">
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{m.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {m.time && <span>🕐 {m.time}</span>}
-                    <span style={{ color: '#ef4444' }}>ب {m.p}g</span>
-                    <span style={{ color: '#3b82f6' }}>ك {m.c}g</span>
-                    <span style={{ color: '#22c55e' }}>د {m.f}g</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: goal.color, fontSize: 16 }}>{m.cal}</span>
-                  <button onClick={() => delMeal(m.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
-                </div>
-              </div>
+              <MealRow key={m.id} m={m} goal={goal} delMeal={delMeal} editMeal={editMeal} />
             ))}
           </div>
         )
@@ -471,6 +486,55 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
   )
 }
 
+// صف وجبة قابل للتعديل
+function MealRow({ m, goal, delMeal, editMeal }) {
+  const [edit, setEdit] = useState(false)
+  const [f, setF] = useState({ name: m.name, cal: m.cal, p: m.p, c: m.c, fat: m.f })
+  function save() {
+    editMeal(m.id, { name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0 })
+    setEdit(false)
+  }
+  if (edit) {
+    return (
+      <div style={{ ...card, marginBottom: 6, padding: 12, border: `1px solid ${goal.color}` }} className="pop">
+        <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="اسم الوجبة"
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 14, marginBottom: 8 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
+          {[['cal', 'سعرة'], ['p', 'بروتين'], ['c', 'كارب'], ['fat', 'دهون']].map(([k, l]) => (
+            <div key={k}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2, textAlign: 'center' }}>{l}</div>
+              <input value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} type="number"
+                style={{ width: '100%', padding: '8px 4px', borderRadius: 8, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 13, textAlign: 'center' }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <button onClick={save} style={{ flex: 1, padding: 9, borderRadius: 10, background: goal.color, color: '#fff', fontWeight: 700, fontSize: 14 }}>✅ حفظ</button>
+          <button onClick={() => setEdit(false)} style={{ padding: '9px 16px', borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 14 }}>إلغاء</button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: 12 }} className="pop">
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{m.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {m.time && <span>🕐 {m.time}</span>}
+          <span style={{ color: '#ef4444' }}>ب {m.p}g</span>
+          <span style={{ color: '#3b82f6' }}>ك {m.c}g</span>
+          <span style={{ color: '#22c55e' }}>د {m.f}g</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontWeight: 800, color: goal.color, fontSize: 16 }}>{m.cal}</span>
+        <button onClick={() => { setF({ name: m.name, cal: m.cal, p: m.p, c: m.c, fat: m.f }); setEdit(true) }} style={{ ...chip, padding: '4px 8px' }}>✏️</button>
+        <button onClick={() => delMeal(m.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
+      </div>
+    </div>
+  )
+}
+
 function mealEmoji(t) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[t] || '🍴' }
 
 // كرت ماكرو ملوّن
@@ -487,61 +551,41 @@ function MacroCard({ label, emoji, val, goal, color }) {
   )
 }
 
-// كرت الماء — خيارات كثيرة + كمية يدوية
+// كرت الماء — أرقام بسيطة ونظيفة
 function WaterCard({ water, setWater, waterGoal }) {
   const [custom, setCustom] = useState('')
-  const [showCustom, setShowCustom] = useState(false)
   const add = (ml) => setWater(w => Math.max(0, w + ml))
   return (
-    <div style={{ ...card, textAlign: 'center', padding: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>💧 الماء</div>
-      <WaterGauge value={water} max={waterGoal} />
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>{(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر</div>
+    <div style={{ ...card, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, textAlign: 'center' }}>💧 الماء</div>
 
-      {/* خيارات الأحجام */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 8 }}>
-        {[[150, '🥃 كاس', 150], [250, '🥤 كوب', 250], [330, '🥫 علبة', 330], [500, '💧 ½ لتر', 500]].map(([ml, l]) => (
-          <button key={ml} onClick={() => add(ml)} style={{ padding: '8px 2px', borderRadius: 10, background: '#3b82f622', color: '#60a5fa', fontSize: 12, fontWeight: 700, border: '1px solid #3b82f644' }}>{l}</button>
+      {/* الرقم الكبير */}
+      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: 30, fontWeight: 800, color: '#3b82f6' }}>{water}</span>
+        <span style={{ fontSize: 15, color: 'var(--muted)' }}> / {waterGoal} مل</span>
+      </div>
+
+      {/* أزرار +/- بأرقام */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+        {[150, 250, 500].map(ml => (
+          <button key={ml} onClick={() => add(ml)} style={{ padding: '10px 2px', borderRadius: 12, background: '#3b82f622', color: '#60a5fa', fontSize: 14, fontWeight: 800, border: '1px solid #3b82f644' }}>+{ml}</button>
         ))}
       </div>
 
-      {/* كمية يدوية */}
-      {showCustom ? (
-        <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
-          <input value={custom} onChange={e => setCustom(e.target.value)} type="number" placeholder="مل"
-            style={{ flex: 1, padding: '8px 10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 13, width: '100%' }} />
-          <button onClick={() => { if (+custom) add(+custom); setCustom(''); setShowCustom(false) }}
-            style={{ padding: '8px 12px', borderRadius: 10, background: '#3b82f6', color: '#fff', fontSize: 13, fontWeight: 700 }}>أضف</button>
-        </div>
-      ) : (
-        <button onClick={() => setShowCustom(true)} style={{ width: '100%', marginTop: 6, padding: 7, borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 12, border: '1px solid var(--border)' }}>✏️ كمية يدوية</button>
-      )}
-
-      {/* تراجع / تصفير */}
-      {water > 0 && (
-        <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
-          <button onClick={() => add(-250)} style={{ flex: 1, padding: 7, borderRadius: 10, background: 'var(--card2)', color: 'var(--muted)', fontSize: 12 }}>↩️ −كوب</button>
-          <button onClick={() => setWater(0)} style={{ flex: 1, padding: 7, borderRadius: 10, background: 'var(--card2)', color: '#ef4444', fontSize: 12 }}>🗑️ صفّر</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// عدّاد ماء دائري
-function WaterGauge({ value, max }) {
-  const pct = Math.min(100, (value / max) * 100)
-  const r = 32, c = 2 * Math.PI * r
-  return (
-    <div style={{ position: 'relative', width: 86, height: 86, margin: '0 auto' }}>
-      <svg width="86" height="86" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="43" cy="43" r={r} stroke="var(--card2)" strokeWidth="8" fill="none" />
-        <circle cx="43" cy="43" r={r} stroke="#3b82f6" strokeWidth="8" fill="none"
-          strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c} strokeLinecap="round" style={{ transition: 'stroke-dashoffset .4s' }} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 17, color: '#60a5fa' }}>
-        {Math.round(pct)}%
+      {/* كمية يدوية + تحكم */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <input value={custom} onChange={e => setCustom(e.target.value)} type="number" placeholder="رقم بالمل"
+          style={{ flex: 1, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 14, width: '100%' }} />
+        <button onClick={() => { if (+custom) add(+custom); setCustom('') }}
+          style={{ padding: '0 18px', borderRadius: 12, background: '#3b82f6', color: '#fff', fontSize: 14, fontWeight: 700 }}>أضف</button>
       </div>
+
+      {water > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <button onClick={() => add(-250)} style={{ flex: 1, padding: 9, borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)', fontSize: 13 }}>− 250</button>
+          <button onClick={() => setWater(0)} style={{ flex: 1, padding: 9, borderRadius: 12, background: 'var(--card2)', color: '#ef4444', fontSize: 13 }}>🗑️ صفّر</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -569,7 +613,8 @@ const CHAT_CONFIG = {
 }
 
 // ============ شات عام (يستخدم لكل خانة بشكل منفصل) ============
-function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) {
+function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, onLog }) {
+  const [logged, setLogged] = useState({})
   const [input, setInput] = useState('')
   const fileRef = useRef(null)
   const scrollRef = useRef(null)
@@ -623,7 +668,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) 
           </div>
         )}
         {thread.map((m, i) => (
-          <div key={i} className="pop" style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
+          <div key={i} className="pop" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
             <div style={{
               maxWidth: '82%', padding: '10px 14px', borderRadius: 16, lineHeight: 1.7, fontSize: 15,
               background: m.role === 'user' ? goal.color : 'var(--card)',
@@ -632,6 +677,22 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) 
               borderBottomLeftRadius: m.role === 'user' ? 4 : 16,
               whiteSpace: 'pre-wrap'
             }}>{typeof m.content === 'string' ? m.content : (m.display || '📷 صورة')}</div>
+            {/* أزرار تثبيت التمارين */}
+            {m.logItems && onLog && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, width: '82%' }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>💪 ثبّت التمارين:</div>
+                {m.logItems.map((it, j) => {
+                  const key = i + '-' + j
+                  return (
+                    <button key={j} onClick={() => { if (!logged[key]) { onLog(it.name, it.cal); setLogged(s => ({ ...s, [key]: true })) } }}
+                      style={{ ...card, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'right', background: logged[key] ? '#16a34a22' : 'var(--card)', border: `1px solid ${logged[key] ? '#16a34a' : 'var(--border)'}` }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{logged[key] ? '✅ ' : '🏋️ '}{it.name}</span>
+                      <span style={{ fontSize: 12, color: goal.color, fontWeight: 700 }}>{it.cal} سعرة</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         ))}
         {loading && <div style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 14, paddingRight: 6 }}>{config.title} يكتب...</div>}
@@ -661,7 +722,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) 
 }
 
 // ============ التمارين (مكتبة + مدرب ذكي) ============
-function Workout({ logWorkout, profile, goal, thread, loading, sendAI, clearThread }) {
+function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sendAI, clearThread }) {
   const [view, setView] = useState('coach') // coach | library
   const [muscle, setMuscle] = useState('chest')
   const [place, setPlace] = useState('all')
@@ -681,7 +742,7 @@ function Workout({ logWorkout, profile, goal, thread, loading, sendAI, clearThre
         ))}
       </div>
 
-      {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.workout} />}
+      {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.workout} onLog={logAIWorkout} />}
 
       {view === 'library' && <>
       {/* كروت العضلات الملوّنة */}

@@ -1,6 +1,4 @@
-// ====== Backend آمن — ينادي Claude AI بدون كشف المفتاح ======
-// يشتغل تلقائياً على Vercel كـ Serverless Function
-
+// ====== Backend آمن — بث مباشر (streaming) من Claude AI ======
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'POST only' })
@@ -8,7 +6,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'مفتاح الـ AI غير مضبوط. أضف ANTHROPIC_API_KEY في إعدادات Vercel.' })
+    return res.status(500).json({ error: 'مفتاح الـ AI غير مضبوط في Vercel.' })
   }
 
   try {
@@ -25,18 +23,47 @@ export default async function handler(req, res) {
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
         system,
+        stream: true,
         messages: messages.map(m => ({ role: m.role, content: m.content })),
       }),
     })
 
-    const data = await r.json()
-    if (data.error) {
-      return res.status(500).json({ error: data.error.message })
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}))
+      return res.status(500).json({ error: err.error?.message || 'فشل الاتصال بالـ AI' })
     }
 
-    const reply = data.content?.[0]?.text || 'ما وصلني رد'
-    return res.status(200).json({ reply })
+    // نبثّ النص للعميل قطعة قطعة
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    if (res.flushHeaders) res.flushHeaders()
+
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+      for (const line of lines) {
+        const t = line.trim()
+        if (t.startsWith('data:')) {
+          const payload = t.slice(5).trim()
+          if (payload === '[DONE]') continue
+          try {
+            const data = JSON.parse(payload)
+            if (data.type === 'content_block_delta' && data.delta?.text) {
+              res.write(data.delta.text)
+            }
+          } catch { /* تجاهل أسطر غير مكتملة */ }
+        }
+      }
+    }
+    res.end()
   } catch (e) {
-    return res.status(500).json({ error: 'خطأ في الاتصال بالـ AI: ' + e.message })
+    if (!res.headersSent) return res.status(500).json({ error: 'خطأ: ' + e.message })
+    res.end()
   }
 }

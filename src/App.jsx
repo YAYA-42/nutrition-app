@@ -24,7 +24,8 @@ export default function App() {
   const [day, setDay] = useState(() => load('day', todayKey()))
 
   const [meals, setMeals] = useState(() => load('meals', []))
-  const [water, setWater] = useState(() => load('water', 0))
+  const [water, setWater] = useState(() => load('water', 0)) // بالمل (ml)
+  const waterGoal = 2500 // الهدف اليومي بالمل
   const [burned, setBurned] = useState(() => load('burned', 0))
   const [weights, setWeights] = useState(() => load('weights', []))
   const [savedRecipes, setSavedRecipes] = useState(() => load('recipes', []))
@@ -64,26 +65,34 @@ export default function App() {
   const remaining = target - net
 
   // ====== AI ======
-  async function sendAI(text) {
-    if (!text.trim() || loading) return
-    const userMsg = { role: 'user', content: text }
+  async function sendAI(text, display) {
+    // text ممكن يكون نص أو مصفوفة (صورة+نص)
+    const isArray = Array.isArray(text)
+    if (!isArray && (!text || !text.trim())) return
+    if (loading) return
+    const userMsg = { role: 'user', content: text, ...(display ? { display } : {}) }
+    // للإرسال للـ AI: ننظّف الحقول الإضافية
+    const apiMsgs = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
     const newMsgs = [...messages, userMsg]
     setMessages(newMsgs); setInput(''); setLoading(true)
 
-    const system = `أنت مدرب صحي وغذائي سعودي ودود تتكلم باللهجة الخليجية البسيطة. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً.
+    const system = `أنت مدرب صحي وغذائي ورياضي سعودي ودود، تتكلم باللهجة الخليجية البسيطة وكأنك صديق. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً.
+
+أسلوبك: سولف معه طبيعي، اسأله أسئلة لو احتجت توضيح (وش الأدوات عندك؟ مستواك؟ تحب إيش؟)، وكن محفّز ومختصر.
 
 مهامك:
-1. إذا ذكر المستخدم وجبة أكلها، احسب السعرات والبروتين والكارب والدهون وأرجع سطر خاص في النهاية بالشكل: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]
-2. تعرف الأكل السعودي والخليجي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المطازيز، المعصوب، القهوة العربية، التمر (~٢٠ سعرة/حبة).
-3. إذا طلب وصفة، أعطها بمقادير وخطوات وسعرات، وأرجع سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]
-4. راعِ رمضان والولائم والعادات السعودية.
-5. كن مختصر ومحفّز وعملي.`
+1. الأكل: إذا ذكر أو صوّر وجبة أكلها، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]
+2. إذا أرسل صورة أكل، حلّلها وقدّر السعرات والماكروز وسجّلها بنفس طريقة [MEAL].
+3. تعرف الأكل السعودي/الخليجي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المطازيز، المعصوب، القهوة العربية، التمر (~٢٠ سعرة/حبة). راعِ رمضان والولائم.
+4. الوصفات: إذا طلب وصفة أو قال وش مشتهي، اقترح وصفة على ذوقه بمقادير وخطوات وسعرات، وأرجع سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]
+5. التمارين: إذا طلب تمارين أو خطة، اعطه تمرين واضح فيه: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه. اشرح بإيجاز كيف يأديها صح. لو احتجت تعرف مستواه أو أدواته اسأله.
+6. كن مختصر، عملي، ومحفّز.`
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, messages: newMsgs })
+        body: JSON.stringify({ system, messages: apiMsgs })
       })
       if (!res.ok) throw new Error('api')
       const data = await res.json()
@@ -111,6 +120,8 @@ export default function App() {
     setLoading(false)
   }
 
+  // يحوّل لتبويب المحادثة ويرسل السؤال (للمدرب والوصفات)
+  function ask(text) { setTab('chat'); setTimeout(() => sendAI(text), 60) }
   function addMeal(m) { setMeals(x => [{ ...m, id: Date.now() }, ...x]) }
   function delMeal(id) { setMeals(x => x.filter(m => m.id !== id)) }
   function logWorkout(ex, minutes = 20) {
@@ -140,10 +151,10 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, goal, meals, delMeal }} />}
-        {tab === 'chat' && <Chat {...{ messages, input, setInput, loading, sendAI, chatRef }} />}
-        {tab === 'workout' && <Workout {...{ logWorkout, profile }} />}
-        {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, sendAI }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal }} />}
+        {tab === 'chat' && <Chat {...{ messages, input, setInput, loading, sendAI, chatRef, goal }} />}
+        {tab === 'workout' && <Workout {...{ logWorkout, profile, ask, goal }} />}
+        {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, ask, goal }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
       </div>
 
@@ -240,7 +251,8 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 }
 
 // ============ الرئيسية ============
-function Home({ target, totals, net, burned, remaining, water, setWater, goal, meals, delMeal }) {
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal }) {
+  const waterPct = Math.min(100, (water / waterGoal) * 100)
   const pct = Math.min(100, (net / target) * 100)
   return (
     <div className="fade">
@@ -261,20 +273,35 @@ function Home({ target, totals, net, burned, remaining, water, setWater, goal, m
         <Macro label="دهون" value={totals.f} unit="g" color="#ef4444" />
       </div>
 
-      {/* الماء */}
+      {/* الماء — بالمل واللتر */}
       <div style={{ ...card, marginTop: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontWeight: 700 }}>💧 الماء</span>
-          <span style={{ color: 'var(--muted)', fontSize: 14 }}>{water} / 8 أكواب</span>
+          <span style={{ color: '#3b82f6', fontSize: 15, fontWeight: 700 }}>
+            {(water / 1000).toFixed(2)} / {(waterGoal / 1000).toFixed(1)} لتر
+          </span>
         </div>
+        {/* شريط التقدم */}
+        <div style={{ height: 14, background: 'var(--card2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+          <div style={{ height: '100%', width: `${waterPct}%`, background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', borderRadius: 10, transition: '.3s' }} />
+        </div>
+        {/* أزرار إضافة بأحجام */}
         <div style={{ display: 'flex', gap: 6 }}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <button key={i} onClick={() => setWater(i < water ? i : i + 1)}
-              style={{ flex: 1, height: 36, borderRadius: 8, fontSize: 18, background: i < water ? '#3b82f6' : 'var(--card2)', transition: '.2s' }}>
-              {i < water ? '💧' : ''}
+          {[[200, 'كوب'], [330, 'علبة'], [500, '½ لتر'], [1000, 'لتر']].map(([ml, lbl]) => (
+            <button key={ml} onClick={() => setWater(w => Math.min(waterGoal + 1000, w + ml))}
+              style={{ flex: 1, padding: '10px 4px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 2, border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 18 }}>💧</span>
+              <span style={{ fontSize: 11, fontWeight: 700 }}>{lbl}</span>
+              <span style={{ fontSize: 9, color: 'var(--muted)' }}>{ml}مل</span>
             </button>
           ))}
         </div>
+        {water > 0 && (
+          <button onClick={() => setWater(w => Math.max(0, w - 200))}
+            style={{ width: '100%', marginTop: 8, padding: 8, borderRadius: 10, background: 'transparent', color: 'var(--muted)', fontSize: 13, border: '1px solid var(--border)' }}>
+            ↩️ تراجع (−200 مل)
+          </button>
+        )}
       </div>
 
       {/* الوجبات */}
@@ -298,30 +325,51 @@ function Home({ target, totals, net, burned, remaining, water, setWater, goal, m
   )
 }
 
-// ============ المحادثة ============
-function Chat({ messages, input, setInput, loading, sendAI, chatRef }) {
+// ============ المحادثة (مع مسح بالكاميرا) ============
+function Chat({ messages, input, setInput, loading, sendAI, chatRef, goal }) {
+  const fileRef = useRef(null)
+
+  function onPhoto(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const b64 = reader.result.split(',')[1]
+      const media = file.type || 'image/jpeg'
+      // نرسل رسالة فيها صورة + نص
+      sendAI([
+        { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+        { type: 'text', text: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.' }
+      ], '📷 صورت وجبة')
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   return (
     <div className="fade" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
       <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--muted)', marginTop: 30 }}>
             <div style={{ fontSize: 44 }}>💬</div>
-            <p style={{ marginTop: 8 }}>قول لي وش أكلت وأحسبها لك!</p>
-            <p style={{ fontSize: 13, marginTop: 4 }}>مثال: "أكلت صحن كبسة دجاج"</p>
+            <p style={{ marginTop: 8, fontWeight: 700, color: 'var(--text)' }}>سولف معي عن أكلك!</p>
+            <p style={{ fontSize: 13, marginTop: 6 }}>✍️ اكتب: "أكلت صحن كبسة"</p>
+            <p style={{ fontSize: 13, marginTop: 2 }}>📷 أو صوّر أكلك وأنا أحسبه</p>
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className="pop" style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
             <div style={{
-              maxWidth: '80%', padding: '10px 14px', borderRadius: 16, lineHeight: 1.6, fontSize: 15,
-              background: m.role === 'user' ? 'var(--accent2)' : 'var(--card)',
+              maxWidth: '82%', padding: '10px 14px', borderRadius: 16, lineHeight: 1.7, fontSize: 15,
+              background: m.role === 'user' ? goal.color : 'var(--card)',
+              color: m.role === 'user' ? '#fff' : 'var(--text)',
               borderBottomRightRadius: m.role === 'user' ? 16 : 4,
               borderBottomLeftRadius: m.role === 'user' ? 4 : 16,
               whiteSpace: 'pre-wrap'
-            }}>{m.content}</div>
+            }}>{typeof m.content === 'string' ? m.content : (m.display || '📷 صورة')}</div>
           </div>
         ))}
-        {loading && <div style={{ textAlign: 'center', color: 'var(--muted)' }}>... يكتب</div>}
+        {loading && <div style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 14, paddingRight: 6 }}>المساعد يكتب...</div>}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 0' }}>
@@ -330,20 +378,24 @@ function Chat({ messages, input, setInput, loading, sendAI, chatRef }) {
         ))}
       </div>
 
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
       <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
+        <button onClick={() => fileRef.current?.click()} disabled={loading}
+          style={{ ...primaryBtn, width: 52, padding: 0, background: 'var(--card2)', fontSize: 22 }}>📷</button>
         <input value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && sendAI(input)}
           placeholder="اكتب وجبتك أو سؤالك..."
           style={{ flex: 1, padding: '12px 16px', borderRadius: 14, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 15 }} />
         <button onClick={() => sendAI(input)} disabled={loading}
-          style={{ ...primaryBtn, width: 52, padding: 0, background: 'var(--accent)' }}>➤</button>
+          style={{ ...primaryBtn, width: 52, padding: 0, background: goal.color, fontSize: 20 }}>➤</button>
       </div>
     </div>
   )
 }
 
-// ============ التمارين ============
-function Workout({ logWorkout, profile }) {
+// ============ التمارين (مكتبة + مدرب ذكي) ============
+function Workout({ logWorkout, profile, ask, goal }) {
+  const [view, setView] = useState('coach') // coach | library
   const [muscle, setMuscle] = useState('chest')
   const [place, setPlace] = useState('all')
   const [open, setOpen] = useState(null)
@@ -354,10 +406,21 @@ function Workout({ logWorkout, profile }) {
 
   return (
     <div className="fade">
+      {/* تبديل: مدرب / مكتبة */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[['coach', '🧠 المدرب الذكي'], ['library', '📚 مكتبة التمارين']].map(([v, l]) => (
+          <button key={v} onClick={() => setView(v)}
+            style={{ ...seg, fontSize: 14, ...(view === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
+        ))}
+      </div>
+
+      {view === 'coach' && <WorkoutCoach ask={ask} goal={goal} />}
+
+      {view === 'library' && <>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 0', marginBottom: 4 }}>
         {Object.entries(EXERCISES).map(([id, m]) => (
           <button key={id} onClick={() => setMuscle(id)}
-            style={{ ...chip, whiteSpace: 'nowrap', ...(muscle === id ? { background: 'var(--accent)', color: '#000' } : {}) }}>
+            style={{ ...chip, whiteSpace: 'nowrap', ...(muscle === id ? { background: goal.color, color: '#fff' } : {}) }}>
             {m.emoji} {m.name}
           </button>
         ))}
@@ -386,29 +449,88 @@ function Workout({ logWorkout, profile }) {
               </ol>
               <div style={{ background: '#f59e0b22', padding: 10, borderRadius: 10, fontSize: 13, marginTop: 10 }}>⚠️ {e.tip}</div>
               <button onClick={() => { const c = logWorkout(e); setDone({ ...done, [e.name]: c }) }}
-                style={{ ...primaryBtn, background: done[e.name] ? '#16a34a' : 'var(--accent)', marginTop: 12 }}>
+                style={{ ...primaryBtn, background: done[e.name] ? '#16a34a' : goal.color, marginTop: 12 }}>
                 {done[e.name] ? `✅ سجّلت (${done[e.name]} سعرة)` : 'سويته ✓'}
               </button>
             </div>
           )}
         </div>
       ))}
+      </>}
     </div>
   )
 }
 
-// ============ الوصفات ============
-function Recipes({ savedRecipes, setSavedRecipes, sendAI }) {
+// ============ المدرب الذكي (شات تمارين) ============
+function WorkoutCoach({ ask, goal }) {
+  const prompts = [
+    'سوّ لي تمرين صدر في البيت',
+    'أبي جدول تمارين أسبوعي',
+    'تمارين تنحيف الكرش',
+    'كم وزن أرفع للبايسبس؟',
+    'تمرين كامل للمبتدئين',
+  ]
   return (
-    <div className="fade">
-      <div style={{ ...card, background: 'linear-gradient(135deg, #16a34a33, transparent)', marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>🍳 اطلب وصفة سعودية</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {['كبسة صحية', 'فطور بروتين', 'سلطة خفيفة', 'حلى دايت', 'شوربة'].map(r => (
-            <button key={r} onClick={() => sendAI('أعطني وصفة ' + r)} style={chip}>{r}</button>
-          ))}
+    <div>
+      <div style={{ ...card, background: `linear-gradient(135deg, ${goal.color}33, transparent)`, textAlign: 'center', marginBottom: 12 }}>
+        <div style={{ fontSize: 40 }}>🏋️‍♂️</div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>سولف مع مدربك الخاص</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.7 }}>
+          قول له وش تبي تمرّن، وش الأدوات عندك، ومستواك — ويعطيك خطة وأوزان وعدد التكرارات
         </div>
       </div>
+      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>جرّب تسأل:</div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {prompts.map(p => (
+          <button key={p} onClick={() => ask(p)}
+            style={{ ...card, textAlign: 'right', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
+            <span style={{ fontWeight: 600 }}>{p}</span>
+            <span style={{ color: goal.color, fontSize: 18 }}>←</span>
+          </button>
+        ))}
+      </div>
+      <div style={{ ...card, marginTop: 12, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+        💬 اضغط أي سؤال أو روح لتبويب <b style={{ color: goal.color }}>المساعد 💬</b> واكتب سؤالك بحرية
+      </div>
+    </div>
+  )
+}
+
+// ============ الوصفات (محادثة) ============
+function Recipes({ savedRecipes, setSavedRecipes, ask, goal }) {
+  const moods = [
+    ['🍗 مشتهي بروتين', 'أنا مشتهي أكل فيه بروتين عالي، وش تقترح؟ أعطني وصفة'],
+    ['🍰 نفسي حلى', 'نفسي حلى بس صحي وقليل سعرات، أعطني وصفة'],
+    ['⚡ شي سريع', 'أبي وجبة سريعة تنعمل في 10 دقايق، أعطني وصفة'],
+    ['🥗 شي خفيف', 'أبي شي خفيف وصحي، أعطني وصفة'],
+    ['🍚 أكل سعودي', 'أبي وصفة أكل سعودي شعبي بس نسخة صحية'],
+    ['🌙 فطور رمضان', 'أعطني وصفة فطور صحي يناسب رمضان'],
+  ]
+  return (
+    <div className="fade">
+      <div style={{ ...card, background: `linear-gradient(135deg, ${goal.color}33, transparent)`, textAlign: 'center', marginBottom: 12 }}>
+        <div style={{ fontSize: 40 }}>👨‍🍳</div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>وش مشتهي اليوم؟</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.7 }}>
+          قول لي وش نفسك فيه أو إيش عندك من مكوّنات، وأطبخ لك وصفة على ذوقك
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+        {moods.map(([label, prompt]) => (
+          <button key={label} onClick={() => ask(prompt)}
+            style={{ ...card, padding: 14, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <button onClick={() => ask('عندي بيض وخبز وجبن، وش أقدر أسوي منهم؟')}
+        style={{ ...primaryBtn, background: goal.color, marginBottom: 16 }}>
+        💬 عندي مكوّنات معيّنة — اقترح لي
+      </button>
+
+      {savedRecipes.length > 0 && <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>📒 وصفاتك المحفوظة</div>}
 
       {savedRecipes.length === 0 && (
         <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>

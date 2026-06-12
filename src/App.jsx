@@ -36,6 +36,7 @@ export default function App() {
   // شاتات منفصلة لكل خانة: food (الأكل) / workout (المدرب) / recipes (الطبخ)
   const [threads, setThreads] = useState(() => load('threads', { food: [], workout: [], recipes: [] }))
   const [loading, setLoading] = useState('')  // اسم الخانة اللي تحمّل حالياً
+  const [addOpen, setAddOpen] = useState(false) // شيت تسجيل الوجبة
 
   // ====== تصفير يومي ======
   useEffect(() => {
@@ -190,12 +191,15 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone, openAdd: () => setAddOpen(true) }} />}
         {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
         {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
       </div>
+
+      {/* شيت تسجيل الوجبة */}
+      {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} sendAI={sendAI} addMeal={addMeal} setTab={setTab} goal={goal} />}
 
       {/* شريط التبويبات العائم */}
       <div style={nav}>
@@ -333,7 +337,7 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 }
 
 // ============ الرئيسية (تصميم احترافي) ============
-function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone }) {
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone, openAdd }) {
   // أهداف الماكروز التقريبية (% من السعرات)
   const pGoal = Math.round(target * 0.30 / 4)
   const cGoal = Math.round(target * 0.40 / 4)
@@ -417,7 +421,7 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
       {/* الوجبات مجمّعة حسب النوع */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 8 }}>
         <span style={{ fontWeight: 800, fontSize: 17 }}>وجبات اليوم ({meals.length})</span>
-        <button onClick={() => setTab('chat')} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ أضف</button>
+        <button onClick={openAdd} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ أضف</button>
       </div>
 
       {meals.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
@@ -509,6 +513,200 @@ function MealRow({ m, goal, delMeal, editMeal }) {
         <button onClick={() => delMeal(m.id)} style={{ ...chip, padding: '4px 8px' }}>🗑️</button>
       </div>
     </div>
+  )
+}
+
+// ============ شيت تسجيل وجبة (نص/صوت/صورة/باركود/يدوي) ============
+function AddMealSheet({ onClose, sendAI, addMeal, setTab, goal }) {
+  const [mode, setMode] = useState('home') // home | manual | barcode
+  const [listening, setListening] = useState(false)
+  const [status, setStatus] = useState('')
+  const fileRef = useRef(null)
+
+  function go(fn) { fn(); }
+  function finishToChat(text, content, display) {
+    onClose(); setTab('chat')
+    if (content) sendAI(content, display, 'food')
+    else if (text) setTimeout(() => sendAI(text, undefined, 'food'), 80)
+  }
+
+  // ✍️ نص — يفتح شات الأكل
+  const goText = () => { onClose(); setTab('chat') }
+
+  // 🎤 صوت — تعرّف على الكلام عربي
+  const goVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { setStatus('جهازك ما يدعم الإدخال الصوتي — استخدم النص'); return }
+    const rec = new SR()
+    rec.lang = 'ar-SA'; rec.interimResults = false; rec.maxAlternatives = 1
+    setListening(true); setStatus('أتكلم الحين... 🎤')
+    rec.onresult = (e) => {
+      const txt = e.results[0][0].transcript
+      setListening(false)
+      finishToChat('أكلت ' + txt)
+    }
+    rec.onerror = () => { setListening(false); setStatus('ما سمعتك، حاول مرة ثانية') }
+    rec.onend = () => setListening(false)
+    rec.start()
+  }
+
+  // 📷 صورة — كاميرا + تصغير
+  const onPhoto = (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const max = 1024; let { width, height } = img
+        if (width > max || height > max) { const r = Math.min(max / width, max / height); width = Math.round(width * r); height = Math.round(height * r) }
+        const cv = document.createElement('canvas'); cv.width = width; cv.height = height
+        cv.getContext('2d').drawImage(img, 0, 0, width, height)
+        const b64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1]
+        finishToChat(null, [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+          { type: 'text', text: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.' }
+        ], '📷 صورت وجبة')
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file); e.target.value = ''
+  }
+
+  const sheet = (children) => (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,.55)', animation: 'backdropIn .2s ease', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: 'var(--bg)', borderRadius: '24px 24px 0 0', border: '1px solid var(--border)', borderBottom: 'none', padding: '12px 16px 24px', animation: 'sheetUp .3s cubic-bezier(.2,.8,.2,1)', maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ width: 40, height: 5, background: 'var(--card2)', borderRadius: 3, margin: '0 auto 16px' }} />
+        {children}
+      </div>
+    </div>
+  )
+
+  if (mode === 'manual') return sheet(<ManualEntry goal={goal} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
+  if (mode === 'barcode') return sheet(<BarcodeEntry goal={goal} onAdd={(m) => { addMeal(m); onClose() }} back={() => setMode('home')} />)
+
+  const opt = (emoji, title, sub, color, onClick) => (
+    <button onClick={onClick} style={{ ...card, padding: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center' }}>
+      <div style={{ width: 50, height: 50, borderRadius: 15, background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>{emoji}</div>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</div>
+    </button>
+  )
+
+  return sheet(<>
+    <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 4 }}>سجّل وجبة جديدة</div>
+    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>اختر الطريقة اللي تريحك</div>
+
+    <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
+    <div className="stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      {opt('💬', 'نص', 'اكتب وجبتك', '#22c55e', goText)}
+      {opt('🎤', 'صوت', 'قول وجبتك', '#ec4899', goVoice)}
+      {opt('📷', 'صورة', 'صوّر وجبتك', '#f97316', () => fileRef.current?.click())}
+    </div>
+    <div style={{ marginTop: 10 }}>
+      <button onClick={() => setMode('barcode')} style={{ ...card, width: '100%', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>▦ باركود المنتج</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>سجّل المنتجات المعلّبة بسرعة</div>
+        </div>
+        <div style={{ width: 46, height: 46, borderRadius: 14, background: '#6366f122', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📦</div>
+      </button>
+    </div>
+    <button onClick={() => setMode('manual')} style={{ width: '100%', marginTop: 14, padding: 12, borderRadius: 12, background: 'transparent', color: goal.color, fontSize: 14, fontWeight: 700, border: `1px dashed ${goal.color}66` }}>
+      ✏️ تعرف القيم الغذائية؟ أدخلها يدوياً
+    </button>
+
+    {/* حالة الصوت */}
+    {(listening || status) && (
+      <div style={{ marginTop: 14, textAlign: 'center', padding: 14, borderRadius: 14, background: 'var(--card)' }}>
+        {listening && <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ec4899', margin: '0 auto 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, animation: 'micPulse 1.2s infinite' }}>🎤</div>}
+        <div style={{ fontSize: 14, color: 'var(--muted)' }}>{status}</div>
+      </div>
+    )}
+  </>)
+}
+
+// إدخال يدوي
+function ManualEntry({ goal, onAdd, back }) {
+  const [f, setF] = useState({ name: '', cal: '', p: '', c: '', fat: '' })
+  const valid = f.name && f.cal
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>✏️ إدخال يدوي</span>
+      </div>
+      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="اسم الوجبة (مثلاً: شاورما)"
+        style={{ width: '100%', padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, marginBottom: 10 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {[['cal', 'السعرات 🔥'], ['p', 'بروتين (g)'], ['c', 'كارب (g)'], ['fat', 'دهون (g)']].map(([k, l]) => (
+          <div key={k}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{l}</div>
+            <input value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} type="number" placeholder="0"
+              style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
+          </div>
+        ))}
+      </div>
+      <button disabled={!valid} onClick={() => onAdd({ name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0 })}
+        style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 16 }}>✅ أضف الوجبة</button>
+    </>
+  )
+}
+
+// باركود — بحث في قاعدة OpenFoodFacts المجانية
+function BarcodeEntry({ goal, onAdd, back }) {
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [err, setErr] = useState('')
+
+  async function lookup() {
+    if (!code.trim()) return
+    setLoading(true); setErr(''); setResult(null)
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code.trim()}.json`)
+      const d = await r.json()
+      if (d.status !== 1 || !d.product) { setErr('ما لقيت المنتج — جرّب رقم ثاني أو أدخله يدوياً'); setLoading(false); return }
+      const p = d.product
+      const n = p.nutriments || {}
+      setResult({
+        name: p.product_name_ar || p.product_name || 'منتج',
+        cal: Math.round(n['energy-kcal_100g'] || n['energy-kcal_serving'] || 0),
+        p: Math.round(n.proteins_100g || 0),
+        c: Math.round(n.carbohydrates_100g || 0),
+        f: Math.round(n.fat_100g || 0),
+      })
+    } catch { setErr('خطأ بالاتصال، حاول مرة ثانية') }
+    setLoading(false)
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>▦ باركود المنتج</span>
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>اكتب رقم الباركود من خلف المنتج (القيم لكل 100 جرام)</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input value={code} onChange={e => setCode(e.target.value)} type="number" placeholder="مثال: 6281006..." onKeyDown={e => e.key === 'Enter' && lookup()}
+          style={{ flex: 1, padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, width: '100%' }} />
+        <button onClick={lookup} disabled={loading} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: goal.color }}>{loading ? '...' : 'بحث'}</button>
+      </div>
+
+      {err && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
+
+      {result && (
+        <div style={{ ...card, marginTop: 14 }} className="pop">
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>📦 {result.name}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: 13, marginBottom: 12 }}>
+            <span style={{ color: goal.color, fontWeight: 700 }}>{result.cal} سعرة</span>
+            <span style={{ color: '#ef4444' }}>ب {result.p}g</span>
+            <span style={{ color: '#3b82f6' }}>ك {result.c}g</span>
+            <span style={{ color: '#22c55e' }}>د {result.f}g</span>
+          </div>
+          <button onClick={() => onAdd(result)} style={{ ...primaryBtn, background: goal.color }}>✅ أضف للوجبات</button>
+        </div>
+      )}
+    </>
   )
 }
 

@@ -22,11 +22,23 @@ html, body, #root {
 
 body {
   font-family: 'Tajawal', system-ui, sans-serif;
-  background:
-    radial-gradient(1200px 600px at 50% -10%, #1e293b55, transparent),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
+}
+
+/* خلفية متوهّجة حيّة تتبع لون الهدف عبر متغيّر --glow */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 50% -15%, var(--glow, #22c55e33), transparent 70%),
+    radial-gradient(700px 500px at 100% 10%, #6366f122, transparent 60%),
+    radial-gradient(700px 600px at 0% 30%, #ec489918, transparent 60%);
+  transition: background .6s ease;
 }
 
 button {
@@ -58,12 +70,41 @@ input, textarea {
   100% { background-position: 200% 0; }
 }
 
+@keyframes ringDraw {
+  from { stroke-dashoffset: var(--circ); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: .55; transform: scale(1); }
+  50% { opacity: .9; transform: scale(1.04); }
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .fade { animation: fadeUp 0.3s ease both; }
 .pop { animation: pop 0.2s ease both; }
+.float-in { animation: floatIn .45s cubic-bezier(.2,.8,.2,1) both; }
+
+/* تأخير متدرّج للعناصر */
+.stagger > * { animation: floatIn .45s cubic-bezier(.2,.8,.2,1) both; }
+.stagger > *:nth-child(1) { animation-delay: .02s; }
+.stagger > *:nth-child(2) { animation-delay: .08s; }
+.stagger > *:nth-child(3) { animation-delay: .14s; }
+.stagger > *:nth-child(4) { animation-delay: .20s; }
+.stagger > *:nth-child(5) { animation-delay: .26s; }
+.stagger > *:nth-child(6) { animation-delay: .32s; }
 
 .glow {
   box-shadow: 0 0 0 1px var(--border), 0 8px 30px -12px rgba(0,0,0,.5);
 }
 
-button:active { transform: scale(0.97); }
-button { transition: transform .1s ease, background .2s ease; }
+button:active { transform: scale(0.96); }
+button { transition: transform .12s cubic-bezier(.2,.8,.2,1), background .2s ease, box-shadow .2s ease; }

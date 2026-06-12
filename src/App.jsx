@@ -179,16 +179,14 @@ export default function App() {
 
   // ====== التطبيق ======
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', paddingBottom: 76, position: 'relative' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', paddingBottom: 90, position: 'relative', '--glow': goal.color + '40' }}>
       {/* الهيدر */}
-      <div style={{ padding: '18px 16px 12px', background: `linear-gradient(135deg, ${goal.color}22, transparent)` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>هدفك الحالي</div>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>{goal.emoji} {goal.name}</div>
-          </div>
-          <button onClick={() => { setGoalId(null) }} style={chip}>تغيير</button>
+      <div style={{ padding: '20px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.5px' }}>هدفك الحالي</div>
+          <div style={{ fontSize: 21, fontWeight: 800, marginTop: 1 }}>{goal.emoji} {goal.name}</div>
         </div>
+        <button onClick={() => { setGoalId(null) }} style={{ ...chip, background: `${goal.color}22`, color: goal.color, border: `1px solid ${goal.color}55` }}>تغيير ✦</button>
       </div>
 
       <div style={{ padding: '0 16px' }}>
@@ -336,10 +334,6 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 
 // ============ الرئيسية (تصميم احترافي) ============
 function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone }) {
-  const [macroView, setMacroView] = useState('eaten') // eaten | left
-  const calPct = Math.min(100, (net / target) * 100)
-  const show = macroView === 'eaten'
-
   // أهداف الماكروز التقريبية (% من السعرات)
   const pGoal = Math.round(target * 0.30 / 4)
   const cGoal = Math.round(target * 0.40 / 4)
@@ -367,7 +361,7 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
         <div style={{ fontSize: 20, fontWeight: 800 }}>{greet}! 👋</div>
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>هذا ملخص يومك</div>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div className="stagger" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {[
           ['🍽️', meals.length, 'وجبات'],
           ['🏋️', workoutsDone.length, 'تمارين'],
@@ -396,38 +390,11 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
         ))}
       </div>
 
-      {/* كرت السعرات الكبير */}
-      <div style={{ ...card, padding: 18, background: `linear-gradient(135deg, ${goal.color}22, var(--card))` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontWeight: 700 }}>🔥 السعرات الحرارية</span>
-          <span style={{ fontSize: 14 }}><b style={{ fontSize: 22, color: goal.color }}>{net}</b> <span style={{ color: 'var(--muted)' }}>/ {target}</span></span>
-        </div>
-        <div style={{ height: 14, background: 'var(--card2)', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${calPct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}aa)`, borderRadius: 10, transition: '.4s' }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 14, fontSize: 13 }}>
-          <span style={{ color: 'var(--muted)' }}>مأكول <b style={{ color: 'var(--text)' }}>{totals.cal}</b></span>
-          <span style={{ color: 'var(--muted)' }}>محروق <b style={{ color: '#ef4444' }}>{burned}</b></span>
-          <span style={{ color: 'var(--muted)' }}>متبقي <b style={{ color: goal.color }}>{remaining > 0 ? remaining : 0}</b></span>
-        </div>
-      </div>
+      {/* حلقة الطاقة — القطعة المميزة */}
+      <EnergyRing net={net} target={target} totals={totals} burned={burned} remaining={remaining}
+        goal={goal} pGoal={pGoal} cGoal={cGoal} fGoal={fGoal} />
 
-      {/* مفتاح المستهلك / المتبقي */}
-      <div style={{ display: 'flex', gap: 6, background: 'var(--card)', borderRadius: 14, padding: 4, marginTop: 12, border: '1px solid var(--border)' }}>
-        {[['eaten', 'المستهلك'], ['left', 'المتبقي']].map(([v, l]) => (
-          <button key={v} onClick={() => setMacroView(v)}
-            style={{ flex: 1, padding: 9, borderRadius: 10, fontWeight: 700, fontSize: 14, background: macroView === v ? goal.color : 'transparent', color: macroView === v ? '#fff' : 'var(--muted)' }}>{l}</button>
-        ))}
-      </div>
-
-      {/* كروت الماكروز الملوّنة */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-        <MacroCard label="بروتين" emoji="🥩" val={show ? totals.p : Math.max(0, pGoal - totals.p)} goal={pGoal} color="#ef4444" />
-        <MacroCard label="كارب" emoji="🌾" val={show ? totals.c : Math.max(0, cGoal - totals.c)} goal={cGoal} color="#3b82f6" />
-        <MacroCard label="دهون" emoji="🥑" val={show ? totals.f : Math.max(0, fGoal - totals.f)} goal={fGoal} color="#22c55e" />
-      </div>
-
-      {/* الماء (دائري) + الخطوات */}
+      {/* الماء + الخطوات */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
         {/* الماء */}
         <WaterCard water={water} setWater={setWater} waterGoal={waterGoal} />
@@ -547,16 +514,84 @@ function MealRow({ m, goal, delMeal, editMeal }) {
 
 function mealEmoji(t) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[t] || '🍴' }
 
-// كرت ماكرو ملوّن
-function MacroCard({ label, emoji, val, goal, color }) {
-  const pct = Math.min(100, (val / goal) * 100)
+// ============ حلقة الطاقة — القطعة المميزة ============
+function EnergyRing({ net, target, totals, burned, remaining, goal, pGoal, cGoal, fGoal }) {
+  const pct = Math.max(0, Math.min(100, (net / target) * 100))
+  const R = 78, C = 2 * Math.PI * R
+  const off = C - (pct / 100) * C
+  const left = Math.max(0, remaining)
+  const over = net > target
+  const gid = 'g-' + goal.id
+
   return (
-    <div style={{ background: `${color}1a`, border: `1px solid ${color}44`, borderRadius: 16, padding: 12, textAlign: 'center' }}>
-      <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{emoji} {label}</div>
-      <div style={{ fontSize: 19, fontWeight: 800, color, margin: '4px 0' }}>{val}<span style={{ fontSize: 11, color: 'var(--muted)' }}>/{goal}g</span></div>
-      <div style={{ height: 5, background: 'var(--card2)', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: '.3s' }} />
+    <div className="float-in" style={{
+      ...card, padding: '22px 18px 20px', textAlign: 'center', position: 'relative', overflow: 'hidden',
+      background: `radial-gradient(120% 90% at 50% -10%, ${goal.color}26, var(--card))`,
+      border: `1px solid ${goal.color}33`,
+    }}>
+      {/* توهّج خلفي نابض */}
+      <div style={{ position: 'absolute', top: -40, left: '50%', transform: 'translateX(-50%)', width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${goal.color}33, transparent 65%)`, animation: 'pulseGlow 3.5s ease-in-out infinite', pointerEvents: 'none' }} />
+
+      {/* الحلقة */}
+      <div style={{ position: 'relative', width: 188, height: 188, margin: '0 auto' }}>
+        <svg width="188" height="188" style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+          <defs>
+            <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor={goal.color} />
+              <stop offset="100%" stopColor={over ? '#ef4444' : '#ffffff'} stopOpacity={over ? 1 : .7} />
+            </linearGradient>
+            <filter id="glow-f" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <circle cx="94" cy="94" r={R} stroke="var(--card2)" strokeWidth="13" fill="none" opacity=".6" />
+          <circle cx="94" cy="94" r={R} stroke={`url(#${gid})`} strokeWidth="13" fill="none"
+            strokeDasharray={C} strokeDashoffset={off} strokeLinecap="round" filter="url(#glow-f)"
+            style={{ '--circ': C, animation: 'ringDraw 1.1s cubic-bezier(.2,.8,.2,1) both', transition: 'stroke-dashoffset .5s' }} />
+        </svg>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '1px' }}>{over ? 'تجاوزت بـ' : 'باقي لك'}</div>
+          <div style={{ fontSize: 42, fontWeight: 800, lineHeight: 1, color: over ? '#ef4444' : goal.color, animation: 'countUp .5s ease both' }}>
+            {over ? net - target : left}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>سعرة · من {target}</div>
+        </div>
       </div>
+
+      {/* مأكول / محروق */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 22, marginTop: 6, fontSize: 13 }}>
+        <span style={{ color: 'var(--muted)' }}>🍽️ مأكول <b style={{ color: 'var(--text)' }}>{totals.cal}</b></span>
+        <span style={{ color: 'var(--muted)' }}>🔥 محروق <b style={{ color: '#ef4444' }}>{burned}</b></span>
+      </div>
+
+      {/* حلقات الماكرو الصغيرة */}
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <MacroRing label="بروتين" val={totals.p} goal={pGoal} color="#ef4444" />
+        <MacroRing label="كارب" val={totals.c} goal={cGoal} color="#3b82f6" />
+        <MacroRing label="دهون" val={totals.f} goal={fGoal} color="#22c55e" />
+      </div>
+    </div>
+  )
+}
+
+// حلقة ماكرو صغيرة
+function MacroRing({ label, val, goal, color }) {
+  const pct = Math.max(0, Math.min(100, (val / goal) * 100))
+  const r = 24, c = 2 * Math.PI * r
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ position: 'relative', width: 60, height: 60, margin: '0 auto' }}>
+        <svg width="60" height="60" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="30" cy="30" r={r} stroke="var(--card2)" strokeWidth="6" fill="none" />
+          <circle cx="30" cy="30" r={r} stroke={color} strokeWidth="6" fill="none"
+            strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c} strokeLinecap="round"
+            style={{ transition: 'stroke-dashoffset .5s' }} />
+        </svg>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color }}>{val}</div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{label}</div>
+      <div style={{ fontSize: 9, color: 'var(--muted)', opacity: .7 }}>/{goal}g</div>
     </div>
   )
 }

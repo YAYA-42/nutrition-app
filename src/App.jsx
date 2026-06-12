@@ -30,10 +30,9 @@ export default function App() {
   const [weights, setWeights] = useState(() => load('weights', []))
   const [savedRecipes, setSavedRecipes] = useState(() => load('recipes', []))
 
-  const [messages, setMessages] = useState(() => load('messages', []))
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const chatRef = useRef(null)
+  // شاتات منفصلة لكل خانة: food (الأكل) / workout (المدرب) / recipes (الطبخ)
+  const [threads, setThreads] = useState(() => load('threads', { food: [], workout: [], recipes: [] }))
+  const [loading, setLoading] = useState('')  // اسم الخانة اللي تحمّل حالياً
 
   // ====== تصفير يومي ======
   useEffect(() => {
@@ -52,8 +51,7 @@ export default function App() {
   useEffect(() => save('burned', burned), [burned])
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
-  useEffect(() => save('messages', messages), [messages])
-  useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, [messages, loading])
+  useEffect(() => save('threads', threads), [threads])
 
   // ====== مجاميع ======
   const goal = GOALS.find(g => g.id === goalId) || GOALS[1]
@@ -64,48 +62,42 @@ export default function App() {
   const net = totals.cal - burned
   const remaining = target - net
 
-  // ====== AI ======
-  async function sendAI(text, display) {
-    // text ممكن يكون نص أو مصفوفة (صورة+نص)
+  // ====== AI — كل خانة لها شات منفصل ======
+  const baseSystem = `أنت مدرب صحي وغذائي ورياضي سعودي ودود، تتكلم باللهجة الخليجية البسيطة وكأنك صديق. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً. كن مختصر، عملي، ومحفّز، واسأله لو احتجت توضيح.`
+
+  const SYSTEMS = {
+    food: baseSystem + `\nتخصصك هنا: حساب الأكل فقط. إذا ذكر أو صوّر وجبة، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]. تعرف الأكل السعودي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المعصوب، التمر (~٢٠/حبة).`,
+    workout: baseSystem + `\nتخصصك هنا: التمارين فقط. اعطه تمرين/خطة واضحة فيها: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه، وشرح مختصر للأداء الصحيح. لو احتجت تعرف مستواه أو أدواته (بيت/نادي) اسأله.`,
+    recipes: baseSystem + `\nتخصصك هنا: الوصفات فقط. اسأله وش مشتهي أو وش عنده مكوّنات، واقترح وصفة على ذوقه بمقادير وخطوات وسعرات. أرجع في النهاية سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]`,
+  }
+
+  async function sendAI(text, display, ctx = 'food') {
     const isArray = Array.isArray(text)
     if (!isArray && (!text || !text.trim())) return
     if (loading) return
     const userMsg = { role: 'user', content: text, ...(display ? { display } : {}) }
-    // للإرسال للـ AI: ننظّف الحقول الإضافية
-    const apiMsgs = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
-    const newMsgs = [...messages, userMsg]
-    setMessages(newMsgs); setInput(''); setLoading(true)
-
-    const system = `أنت مدرب صحي وغذائي ورياضي سعودي ودود، تتكلم باللهجة الخليجية البسيطة وكأنك صديق. هدف المستخدم: ${goal.name}. سعراته المستهدفة: ${target} سعرة يومياً.
-
-أسلوبك: سولف معه طبيعي، اسأله أسئلة لو احتجت توضيح (وش الأدوات عندك؟ مستواك؟ تحب إيش؟)، وكن محفّز ومختصر.
-
-مهامك:
-1. الأكل: إذا ذكر أو صوّر وجبة أكلها، احسب السعرات والبروتين والكارب والدهون وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]
-2. إذا أرسل صورة أكل، حلّلها وقدّر السعرات والماكروز وسجّلها بنفس طريقة [MEAL].
-3. تعرف الأكل السعودي/الخليجي: الكبسة (~٣٠٠ سعرة/كوب)، الجريش، المندي، المطازيز، المعصوب، القهوة العربية، التمر (~٢٠ سعرة/حبة). راعِ رمضان والولائم.
-4. الوصفات: إذا طلب وصفة أو قال وش مشتهي، اقترح وصفة على ذوقه بمقادير وخطوات وسعرات، وأرجع سطر: [RECIPE]اسم الوصفة|السعرات للحصة|المقادير مفصولة بفاصلة|الخطوات مفصولة بفاصلة[/RECIPE]
-5. التمارين: إذا طلب تمارين أو خطة، اعطه تمرين واضح فيه: اسم كل تمرين، عدد المجموعات والتكرارات، ووزن تقريبي مناسب لمستواه وهدفه. اشرح بإيجاز كيف يأديها صح. لو احتجت تعرف مستواه أو أدواته اسأله.
-6. كن مختصر، عملي، ومحفّز.`
+    const prev = threads[ctx] || []
+    const newMsgs = [...prev, userMsg]
+    const apiMsgs = newMsgs.map(m => ({ role: m.role, content: m.content }))
+    setThreads(t => ({ ...t, [ctx]: newMsgs }))
+    setLoading(ctx)
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system, messages: apiMsgs })
+        body: JSON.stringify({ system: SYSTEMS[ctx], messages: apiMsgs })
       })
       if (!res.ok) throw new Error('api')
       const data = await res.json()
       let reply = data.reply || 'ما وصلني رد، حاول مرة ثانية'
 
-      // استخراج الوجبة
       const mealMatch = reply.match(/\[MEAL\](.*?)\[\/MEAL\]/s)
       if (mealMatch) {
         const [name, cal, p, c, f] = mealMatch[1].split('|').map(s => s.trim())
         addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0 })
         reply = reply.replace(mealMatch[0], '').trim()
       }
-      // استخراج الوصفة
       const recMatch = reply.match(/\[RECIPE\](.*?)\[\/RECIPE\]/s)
       if (recMatch) {
         const [name, cal, ing, steps] = recMatch[1].split('|').map(s => s.trim())
@@ -113,15 +105,14 @@ export default function App() {
         reply = reply.replace(recMatch[0], '').trim()
       }
 
-      setMessages([...newMsgs, { role: 'assistant', content: reply }])
+      setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: reply }] }))
     } catch {
-      setMessages([...newMsgs, { role: 'assistant', content: '⚠️ المساعد الذكي يحتاج نشر التطبيق على الإنترنت أول (موجود في دليل التشغيل). باقي المميزات كلها تشتغل!' }])
+      setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: '⚠️ صار خطأ بالاتصال، حاول مرة ثانية.' }] }))
     }
-    setLoading(false)
+    setLoading('')
   }
 
-  // يحوّل لتبويب المحادثة ويرسل السؤال (للمدرب والوصفات)
-  function ask(text) { setTab('chat'); setTimeout(() => sendAI(text), 60) }
+  function clearThread(ctx) { setThreads(t => ({ ...t, [ctx]: [] })) }
   function addMeal(m) { setMeals(x => [{ ...m, id: Date.now() }, ...x]) }
   function delMeal(id) { setMeals(x => x.filter(m => m.id !== id)) }
   function logWorkout(ex, minutes = 20) {
@@ -151,10 +142,10 @@ export default function App() {
       </div>
 
       <div style={{ padding: '0 16px' }}>
-        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal }} />}
-        {tab === 'chat' && <Chat {...{ messages, input, setInput, loading, sendAI, chatRef, goal }} />}
-        {tab === 'workout' && <Workout {...{ logWorkout, profile, ask, goal }} />}
-        {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, ask, goal }} />}
+        {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal, setTab }} />}
+        {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
+        {tab === 'workout' && <Workout {...{ logWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
+        {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal }} />}
       </div>
 
@@ -251,7 +242,7 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 }
 
 // ============ الرئيسية ============
-function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal }) {
+function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, goal, meals, delMeal, setTab }) {
   const waterPct = Math.min(100, (water / waterGoal) * 100)
   const pct = Math.min(100, (net / target) * 100)
   return (
@@ -264,6 +255,22 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
           <Stat label="محروق" value={burned} color="#ef4444" />
           <Stat label="متبقي" value={remaining > 0 ? remaining : 0} color={goal.color} />
         </div>
+      </div>
+
+      {/* أزرار سريعة — إضافة أكل + المساعد */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+        <button onClick={() => setTab('chat')}
+          style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 14, background: `linear-gradient(135deg, ${goal.color}33, var(--card))` }}>
+          <span style={{ fontSize: 26 }}>➕</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>أضف وجبة</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>اكتب أو صوّر</span>
+        </button>
+        <button onClick={() => setTab('chat')}
+          style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 14 }}>
+          <span style={{ fontSize: 26 }}>💬</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>المساعد الذكي</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>اسأل أي شي</span>
+        </button>
       </div>
 
       {/* الماكروز */}
@@ -325,22 +332,46 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
   )
 }
 
-// ============ المحادثة (مع مسح بالكاميرا) ============
-function Chat({ messages, input, setInput, loading, sendAI, chatRef, goal }) {
-  const fileRef = useRef(null)
+// ============ إعدادات كل شات ============
+const CHAT_CONFIG = {
+  food: {
+    icon: '🍽️', title: 'مساعد الأكل', placeholder: 'اكتب وجبتك...',
+    welcome: ['سولف معي عن أكلك!', '✍️ اكتب: "أكلت صحن كبسة"', '📷 أو صوّر أكلك وأنا أحسبه'],
+    photo: true, photoText: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.',
+    quick: QUICK_MEALS.slice(0, 5).map(q => ['أكلت ' + q, q]),
+  },
+  workout: {
+    icon: '🏋️‍♂️', title: 'المدرب الذكي', placeholder: 'اسأل مدربك...',
+    welcome: ['سولف مع مدربك الخاص!', 'قول له وش تبي تمرّن وأدواتك ومستواك', 'ويعطيك خطة وأوزان وتكرارات'],
+    photo: false,
+    quick: [['سوّ لي تمرين صدر في البيت', '💪 تمرين صدر'], ['أبي جدول تمارين أسبوعي', '📅 جدول أسبوعي'], ['تمارين تنحيف الكرش', '🔥 تنحيف الكرش'], ['تمرين كامل للمبتدئين', '🌱 للمبتدئين']],
+  },
+  recipes: {
+    icon: '👨‍🍳', title: 'مطبخك الذكي', placeholder: 'وش مشتهي؟ أو وش عندك مكوّنات...',
+    welcome: ['وش مشتهي اليوم؟', 'قول لي وش نفسك فيه أو إيش عندك مكوّنات', 'وأطبخ لك وصفة على ذوقك'],
+    photo: false,
+    quick: [['أنا مشتهي بروتين عالي، اقترح وصفة', '🍗 بروتين'], ['نفسي حلى صحي قليل سعرات', '🍰 حلى صحي'], ['وجبة سريعة في 10 دقايق', '⚡ سريعة'], ['وصفة أكل سعودي صحي', '🍚 سعودي']],
+  },
+}
 
+// ============ شات عام (يستخدم لكل خانة بشكل منفصل) ============
+function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config }) {
+  const [input, setInput] = useState('')
+  const fileRef = useRef(null)
+  const scrollRef = useRef(null)
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [thread, loading])
+
+  function send(t) { sendAI(t, undefined, ctx); setInput('') }
   function onPhoto(e) {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
       const b64 = reader.result.split(',')[1]
-      const media = file.type || 'image/jpeg'
-      // نرسل رسالة فيها صورة + نص
       sendAI([
-        { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
-        { type: 'text', text: 'صوّرت هذا الأكل، احسب لي السعرات والماكروز وسجّلها.' }
-      ], '📷 صورت وجبة')
+        { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: b64 } },
+        { type: 'text', text: config.photoText }
+      ], '📷 صورت وجبة', ctx)
     }
     reader.readAsDataURL(file)
     e.target.value = ''
@@ -348,16 +379,21 @@ function Chat({ messages, input, setInput, loading, sendAI, chatRef, goal }) {
 
   return (
     <div className="fade" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
-      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--muted)', marginTop: 30 }}>
-            <div style={{ fontSize: 44 }}>💬</div>
-            <p style={{ marginTop: 8, fontWeight: 700, color: 'var(--text)' }}>سولف معي عن أكلك!</p>
-            <p style={{ fontSize: 13, marginTop: 6 }}>✍️ اكتب: "أكلت صحن كبسة"</p>
-            <p style={{ fontSize: 13, marginTop: 2 }}>📷 أو صوّر أكلك وأنا أحسبه</p>
+      {/* رأس الشات */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6, borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
+        <span style={{ fontWeight: 800 }}>{config.icon} {config.title}</span>
+        {thread.length > 0 && <button onClick={() => clearThread(ctx)} style={{ ...chip, padding: '5px 10px', fontSize: 12 }}>🗑️ مسح</button>}
+      </div>
+
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {thread.length === 0 && (
+          <div style={{ textAlign: 'center', color: 'var(--muted)', marginTop: 24 }}>
+            <div style={{ fontSize: 44 }}>{config.icon}</div>
+            <p style={{ marginTop: 8, fontWeight: 700, color: 'var(--text)' }}>{config.welcome[0]}</p>
+            {config.welcome.slice(1).map((w, i) => <p key={i} style={{ fontSize: 13, marginTop: 4 }}>{w}</p>)}
           </div>
         )}
-        {messages.map((m, i) => (
+        {thread.map((m, i) => (
           <div key={i} className="pop" style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-start' : 'flex-end', marginBottom: 10 }}>
             <div style={{
               maxWidth: '82%', padding: '10px 14px', borderRadius: 16, lineHeight: 1.7, fontSize: 15,
@@ -369,24 +405,26 @@ function Chat({ messages, input, setInput, loading, sendAI, chatRef, goal }) {
             }}>{typeof m.content === 'string' ? m.content : (m.display || '📷 صورة')}</div>
           </div>
         ))}
-        {loading && <div style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 14, paddingRight: 6 }}>المساعد يكتب...</div>}
+        {loading && <div style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 14, paddingRight: 6 }}>{config.title} يكتب...</div>}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 0' }}>
-        {QUICK_MEALS.slice(0, 5).map(q => (
-          <button key={q} onClick={() => sendAI('أكلت ' + q)} style={chip}>{q}</button>
+        {config.quick.map(([prompt, label]) => (
+          <button key={label} onClick={() => send(prompt)} style={chip}>{label}</button>
         ))}
       </div>
 
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
+      {config.photo && <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />}
       <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
-        <button onClick={() => fileRef.current?.click()} disabled={loading}
-          style={{ ...primaryBtn, width: 52, padding: 0, background: 'var(--card2)', fontSize: 22 }}>📷</button>
+        {config.photo && (
+          <button onClick={() => fileRef.current?.click()} disabled={loading}
+            style={{ ...primaryBtn, width: 52, padding: 0, background: 'var(--card2)', fontSize: 22 }}>📷</button>
+        )}
         <input value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && sendAI(input)}
-          placeholder="اكتب وجبتك أو سؤالك..."
+          onKeyDown={e => e.key === 'Enter' && send(input)}
+          placeholder={config.placeholder}
           style={{ flex: 1, padding: '12px 16px', borderRadius: 14, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 15 }} />
-        <button onClick={() => sendAI(input)} disabled={loading}
+        <button onClick={() => send(input)} disabled={loading}
           style={{ ...primaryBtn, width: 52, padding: 0, background: goal.color, fontSize: 20 }}>➤</button>
       </div>
     </div>
@@ -394,7 +432,7 @@ function Chat({ messages, input, setInput, loading, sendAI, chatRef, goal }) {
 }
 
 // ============ التمارين (مكتبة + مدرب ذكي) ============
-function Workout({ logWorkout, profile, ask, goal }) {
+function Workout({ logWorkout, profile, goal, thread, loading, sendAI, clearThread }) {
   const [view, setView] = useState('coach') // coach | library
   const [muscle, setMuscle] = useState('chest')
   const [place, setPlace] = useState('all')
@@ -414,7 +452,7 @@ function Workout({ logWorkout, profile, ask, goal }) {
         ))}
       </div>
 
-      {view === 'coach' && <WorkoutCoach ask={ask} goal={goal} />}
+      {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.workout} />}
 
       {view === 'library' && <>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 0', marginBottom: 4 }}>
@@ -461,80 +499,24 @@ function Workout({ logWorkout, profile, ask, goal }) {
   )
 }
 
-// ============ المدرب الذكي (شات تمارين) ============
-function WorkoutCoach({ ask, goal }) {
-  const prompts = [
-    'سوّ لي تمرين صدر في البيت',
-    'أبي جدول تمارين أسبوعي',
-    'تمارين تنحيف الكرش',
-    'كم وزن أرفع للبايسبس؟',
-    'تمرين كامل للمبتدئين',
-  ]
-  return (
-    <div>
-      <div style={{ ...card, background: `linear-gradient(135deg, ${goal.color}33, transparent)`, textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 40 }}>🏋️‍♂️</div>
-        <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>سولف مع مدربك الخاص</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.7 }}>
-          قول له وش تبي تمرّن، وش الأدوات عندك، ومستواك — ويعطيك خطة وأوزان وعدد التكرارات
-        </div>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8, fontWeight: 600 }}>جرّب تسأل:</div>
-      <div style={{ display: 'grid', gap: 8 }}>
-        {prompts.map(p => (
-          <button key={p} onClick={() => ask(p)}
-            style={{ ...card, textAlign: 'right', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
-            <span style={{ fontWeight: 600 }}>{p}</span>
-            <span style={{ color: goal.color, fontSize: 18 }}>←</span>
-          </button>
-        ))}
-      </div>
-      <div style={{ ...card, marginTop: 12, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
-        💬 اضغط أي سؤال أو روح لتبويب <b style={{ color: goal.color }}>المساعد 💬</b> واكتب سؤالك بحرية
-      </div>
-    </div>
-  )
-}
-
-// ============ الوصفات (محادثة) ============
-function Recipes({ savedRecipes, setSavedRecipes, ask, goal }) {
-  const moods = [
-    ['🍗 مشتهي بروتين', 'أنا مشتهي أكل فيه بروتين عالي، وش تقترح؟ أعطني وصفة'],
-    ['🍰 نفسي حلى', 'نفسي حلى بس صحي وقليل سعرات، أعطني وصفة'],
-    ['⚡ شي سريع', 'أبي وجبة سريعة تنعمل في 10 دقايق، أعطني وصفة'],
-    ['🥗 شي خفيف', 'أبي شي خفيف وصحي، أعطني وصفة'],
-    ['🍚 أكل سعودي', 'أبي وصفة أكل سعودي شعبي بس نسخة صحية'],
-    ['🌙 فطور رمضان', 'أعطني وصفة فطور صحي يناسب رمضان'],
-  ]
+// ============ الوصفات (شات طبخ منفصل + المحفوظة) ============
+function Recipes({ savedRecipes, setSavedRecipes, goal, thread, loading, sendAI, clearThread }) {
+  const [view, setView] = useState('chat') // chat | saved
   return (
     <div className="fade">
-      <div style={{ ...card, background: `linear-gradient(135deg, ${goal.color}33, transparent)`, textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 40 }}>👨‍🍳</div>
-        <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>وش مشتهي اليوم؟</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, lineHeight: 1.7 }}>
-          قول لي وش نفسك فيه أو إيش عندك من مكوّنات، وأطبخ لك وصفة على ذوقك
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-        {moods.map(([label, prompt]) => (
-          <button key={label} onClick={() => ask(prompt)}
-            style={{ ...card, padding: 14, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>
-            {label}
-          </button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[['chat', '👨‍🍳 اطبخ معي'], ['saved', `📒 المحفوظة ${savedRecipes.length ? '(' + savedRecipes.length + ')' : ''}`]].map(([v, l]) => (
+          <button key={v} onClick={() => setView(v)}
+            style={{ ...seg, fontSize: 14, ...(view === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
         ))}
       </div>
 
-      <button onClick={() => ask('عندي بيض وخبز وجبن، وش أقدر أسوي منهم؟')}
-        style={{ ...primaryBtn, background: goal.color, marginBottom: 16 }}>
-        💬 عندي مكوّنات معيّنة — اقترح لي
-      </button>
+      {view === 'chat' && <ChatPanel ctx="recipes" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.recipes} />}
 
-      {savedRecipes.length > 0 && <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>📒 وصفاتك المحفوظة</div>}
-
+      {view === 'saved' && <>
       {savedRecipes.length === 0 && (
         <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-          ما عندك وصفات محفوظة — اطلب وحدة من فوق أو من المساعد 💬
+          ما عندك وصفات محفوظة — روح "اطبخ معي" واطلب وصفة، وتنحفظ هنا تلقائياً 👨‍🍳
         </div>
       )}
       {savedRecipes.map(r => (
@@ -550,6 +532,7 @@ function Recipes({ savedRecipes, setSavedRecipes, ask, goal }) {
           <button onClick={() => setSavedRecipes(s => s.filter(x => x.id !== r.id))} style={{ ...chip, marginTop: 8 }}>🗑️ حذف</button>
         </div>
       ))}
+      </>}
     </div>
   )
 }

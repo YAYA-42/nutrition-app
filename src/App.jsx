@@ -298,6 +298,10 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
             </button>
           ))}
         </div>
+        {/* تنبيه طبي */}
+        <div style={{ marginTop: 22, padding: 12, borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)', lineHeight: 1.7, textAlign: 'center' }}>
+          ⚕️ هذا التطبيق للمساعدة والتوعية فقط، وليس بديلاً عن استشارة الطبيب أو أخصائي التغذية. القيم تقديرية. راجع مختصاً قبل أي نظام غذائي أو رياضي.
+        </div>
       </div>
     )
   }
@@ -1592,6 +1596,11 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
             </div>
           </div>
         )}
+      </Section>
+
+      {/* عن التطبيق */}
+      <Section title="عن التطبيق">
+        <Row icon="⚕️" color="#3b82f6" title="تنبيه طبي" sub="معلومات مهمة عن استخدام التطبيق" onClick={() => alert('⚕️ تنبيه طبي\n\nهذا التطبيق للمساعدة والتوعية فقط، وليس بديلاً عن استشارة الطبيب أو أخصائي التغذية. جميع القيم (السعرات، الماكروز، حرق التمارين) تقديرية وقد تختلف. استشر مختصاً قبل البدء بأي نظام غذائي أو رياضي، خاصة إذا كان لديك أي حالة صحية.')} last />
       </Section>
 
       {/* البيانات */}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { GOALS, EXERCISES, QUICK_MEALS } from './data.js'
+import { TR, LangContext, useT, useLang } from './i18n.js'
 
 // ====== أدوات الحفظ ======
 const todayKey = () => new Date().toISOString().slice(0, 10)
@@ -17,6 +18,21 @@ function calcTarget({ weight, height, age, gender, activity, goalId }) {
 }
 
 export default function App() {
+  const [lang, setLang] = useState(() => load('lang', 'ar'))
+  const t = TR[lang]
+  useEffect(() => {
+    save('lang', lang)
+    document.documentElement.lang = lang
+    document.documentElement.dir = TR[lang].dir
+  }, [lang])
+  return (
+    <LangContext.Provider value={{ lang, t, setLang }}>
+      <AppInner lang={lang} setLang={setLang} t={t} />
+    </LangContext.Provider>
+  )
+}
+
+function AppInner({ lang, setLang, t }) {
   // ====== الحالة ======
   const [tab, setTab] = useState('home')
   const [profile, setProfile] = useState(() => load('profile', null))
@@ -74,7 +90,11 @@ export default function App() {
   const remaining = target - net
 
   // ====== AI — كل خانة لها شات منفصل ======
-  const baseSystem = `أنت مدرب صحي سعودي ودود، تتكلم مع المستخدم كصديق فاهم ومحترم.
+  const langLine = lang === 'en'
+    ? 'IMPORTANT: Reply in clear, friendly English. Keep the same coaching personality.'
+    : ''
+  const baseSystem = `${langLine}
+أنت مدرب صحي سعودي ودود، تتكلم مع المستخدم كصديق فاهم ومحترم.
 
 طريقة كتابتك (مهمة جداً):
 - اكتب نص عربي نظيف وبسيط فقط. ممنوع تماماً أي رموز تنسيق: لا تستخدم #، ولا *، ولا **، ولا شرطات للقوائم، ولا عناوين. اكتب جمل عادية متصلة.
@@ -238,8 +258,8 @@ ${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (ا�
       {/* الهيدر */}
       <div style={{ padding: '20px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.5px' }}>هدفك الحالي</div>
-          <div style={{ fontSize: 21, fontWeight: 800, marginTop: 1 }}>{goal.emoji} {goal.name}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.5px' }}>{t.currentGoal}</div>
+          <div style={{ fontSize: 21, fontWeight: 800, marginTop: 1 }}>{goal.emoji} {t[goal.id]}</div>
         </div>
         <button onClick={() => setTab('settings')} style={{ width: 42, height: 42, borderRadius: 13, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 20 }}>⚙️</button>
       </div>
@@ -260,11 +280,11 @@ ${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (ا�
       <div style={nav}>
         <div style={navPill}>
           {[
-            ['home', '🏠', 'الرئيسية'],
-            ['chat', '💬', 'المساعد'],
-            ['workout', '🏋️', 'تمارين'],
-            ['recipes', '🍳', 'وصفات'],
-            ['progress', '📈', 'تقدمي'],
+            ['home', '🏠', t.home],
+            ['chat', '💬', t.assistant],
+            ['workout', '🏋️', t.workouts],
+            ['recipes', '🍳', t.recipes],
+            ['progress', '📈', t.progress],
           ].map(([id, ic, lb]) => {
             const on = tab === id
             return (
@@ -287,6 +307,7 @@ ${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (ا�
 
 // ============ شاشة البداية ============
 function Onboarding({ goalId, setGoalId, setProfile }) {
+  const t = useT()
   const [step, setStep] = useState(goalId ? 1 : 0)
   const [g, setG] = useState(goalId)
   const [form, setForm] = useState({ weight: '', height: '', age: '', gender: 'male', activity: 1.375, targetWeight: '', weeks: '' })
@@ -296,27 +317,26 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
       <div style={{ maxWidth: 480, margin: '0 auto', padding: 24, minHeight: '100vh' }}>
         <div style={{ textAlign: 'center', marginTop: 30, marginBottom: 30 }} className="fade">
           <div style={{ fontSize: 56 }}>🥗</div>
-          <h1 style={{ fontSize: 28, fontWeight: 800 }}>صحّتي</h1>
-          <p style={{ color: 'var(--muted)', marginTop: 6 }}>مساعدك الغذائي الذكي — وش هدفك؟</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800 }}>{t.appName}</h1>
+          <p style={{ color: 'var(--muted)', marginTop: 6 }}>{t.appTagline}</p>
         </div>
         <div style={{ display: 'grid', gap: 12 }}>
           {GOALS.map((goal, i) => (
             <button key={goal.id} onClick={() => { setG(goal.id); setGoalId(goal.id); setStep(1) }}
               className="fade" style={{
-                ...card, textAlign: 'right', display: 'flex', alignItems: 'center', gap: 14,
+                ...card, textAlign: t.dir === 'rtl' ? 'right' : 'left', display: 'flex', alignItems: 'center', gap: 14,
                 borderRight: `4px solid ${goal.color}`, animationDelay: `${i * 0.05}s`
               }}>
               <span style={{ fontSize: 34 }}>{goal.emoji}</span>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{goal.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{goal.desc}</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{t[goal.id]}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{t[goal.id + 'Desc']}</div>
               </div>
             </button>
           ))}
         </div>
-        {/* تنبيه طبي */}
         <div style={{ marginTop: 22, padding: 12, borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)', lineHeight: 1.7, textAlign: 'center' }}>
-          ⚕️ هذا التطبيق للمساعدة والتوعية فقط، وليس بديلاً عن استشارة الطبيب أو أخصائي التغذية. القيم تقديرية. راجع مختصاً قبل أي نظام غذائي أو رياضي.
+          {t.disclaimer}
         </div>
       </div>
     )
@@ -328,26 +348,26 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
     <div style={{ maxWidth: 480, margin: '0 auto', padding: 24, minHeight: '100vh' }}>
       <div style={{ textAlign: 'center', marginTop: 20, marginBottom: 24 }}>
         <div style={{ fontSize: 44 }}>{goal.emoji}</div>
-        <h2 style={{ fontSize: 22, fontWeight: 800 }}>معلوماتك</h2>
-        <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>عشان نحسب احتياجك اليومي بدقة</p>
+        <h2 style={{ fontSize: 22, fontWeight: 800 }}>{t.yourInfo}</h2>
+        <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>{t.infoSub}</p>
       </div>
       <div style={{ display: 'grid', gap: 14 }}>
-        <Field label="الوزن (كجم)" value={form.weight} onChange={v => setForm({ ...form, weight: v })} />
-        <Field label="الطول (سم)" value={form.height} onChange={v => setForm({ ...form, height: v })} />
-        <Field label="العمر" value={form.age} onChange={v => setForm({ ...form, age: v })} />
+        <Field label={t.weight} value={form.weight} onChange={v => setForm({ ...form, weight: v })} />
+        <Field label={t.height} value={form.height} onChange={v => setForm({ ...form, height: v })} />
+        <Field label={t.age} value={form.age} onChange={v => setForm({ ...form, age: v })} />
         <div>
-          <div style={lbl}>الجنس</div>
+          <div style={lbl}>{t.gender}</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {[['male', 'ذكر 👨'], ['female', 'أنثى 👩']].map(([v, l]) => (
+            {[['male', t.male], ['female', t.female]].map(([v, l]) => (
               <button key={v} onClick={() => setForm({ ...form, gender: v })}
                 style={{ ...seg, ...(form.gender === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
             ))}
           </div>
         </div>
         <div>
-          <div style={lbl}>نشاطك اليومي</div>
+          <div style={lbl}>{t.activity}</div>
           <div style={{ display: 'grid', gap: 6 }}>
-            {[[1.2, 'قليل جداً (مكتبي)'], [1.375, 'خفيف (تمرين بسيط)'], [1.55, 'متوسط (3-5 أيام)'], [1.725, 'عالي (يومي)']].map(([v, l]) => (
+            {[[1.2, t.actLow], [1.375, t.actLight], [1.55, t.actMed], [1.725, t.actHigh]].map(([v, l]) => (
               <button key={v} onClick={() => setForm({ ...form, activity: v })}
                 style={{ ...seg, fontSize: 13, ...(form.activity === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
             ))}
@@ -357,38 +377,25 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
         {/* هدف الوزن والمدة (لغير التثبيت) */}
         {g !== 'maintain' && (
           <div style={{ ...card, background: `${goal.color}11`, border: `1px solid ${goal.color}44` }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>🎯 هدفك</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{t.yourGoal}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <div style={lbl}>{g === 'lose' ? 'الوزن المطلوب' : 'الوزن الهدف'} (كجم)</div>
-                <input value={form.targetWeight} onChange={e => setForm({ ...form, targetWeight: e.target.value })} type="number" placeholder={g === 'lose' ? 'أقل' : 'أكثر'}
+                <div style={lbl}>{t.targetWeight}</div>
+                <input value={form.targetWeight} onChange={e => setForm({ ...form, targetWeight: e.target.value })} type="number"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
               </div>
               <div>
-                <div style={lbl}>خلال كم أسبوع؟</div>
-                <input value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} type="number" placeholder="مثلاً 12"
+                <div style={lbl}>{t.inWeeks}</div>
+                <input value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} type="number" placeholder="12"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
               </div>
             </div>
-            {form.targetWeight && form.weight && form.weeks && (
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10, textAlign: 'center', lineHeight: 1.7 }}>
-                {(() => {
-                  const diff = Math.abs(+form.weight - +form.targetWeight)
-                  const perWeek = (diff / +form.weeks).toFixed(2)
-                  const safe = perWeek <= 1
-                  return <span style={{ color: safe ? '#22c55e' : '#f59e0b' }}>
-                    {safe ? '✅' : '⚠️'} {g === 'lose' ? 'تنزل' : 'تزيد'} {perWeek} كجم بالأسبوع
-                    {!safe && ' — معدّل سريع، يُفضّل تمدّد المدة'}
-                  </span>
-                })()}
-              </div>
-            )}
           </div>
         )}
 
         <button disabled={!valid} onClick={() => setProfile({ ...form, weight: +form.weight, height: +form.height, age: +form.age, targetWeight: +form.targetWeight || 0, weeks: +form.weeks || 0, startWeight: +form.weight })}
           style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 6 }}>
-          يلا نبدأ 🚀
+          {t.start}
         </button>
       </div>
     </div>
@@ -397,13 +404,16 @@ function Onboarding({ goalId, setGoalId, setProfile }) {
 
 // ============ الرئيسية (تصميم احترافي) ============
 function Home({ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone, openAdd }) {
+  const t = useT()
   // أهداف الماكروز التقريبية (% من السعرات)
   const pGoal = Math.round(target * 0.30 / 4)
   const cGoal = Math.round(target * 0.40 / 4)
   const fGoal = Math.round(target * 0.30 / 9)
 
   // أيام الأسبوع
-  const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+  const days = t.dir === 'rtl'
+    ? ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const todayIdx = new Date().getDay()
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6 - i))
@@ -412,24 +422,24 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
 
   // تجميع الوجبات حسب النوع
   const order = ['فطور', 'غداء', 'عشاء', 'سناك']
-  const groups = order.map(t => ({ type: t, items: meals.filter(m => m.type === t) })).filter(g => g.items.length)
+  const groups = order.map(ty => ({ type: ty, items: meals.filter(m => m.type === ty) })).filter(g => g.items.length)
 
   const hr = new Date().getHours()
-  const greet = hr < 12 ? 'صباح الخير' : hr < 18 ? 'مساء الخير' : 'مساء الخير'
+  const greet = hr < 12 ? t.goodMorning : t.goodEvening
 
   return (
     <div className="fade">
       {/* ترحيب + ملخص اليوم */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 20, fontWeight: 800 }}>{greet}! 👋</div>
-        <div style={{ fontSize: 13, color: 'var(--muted)' }}>هذا ملخص يومك</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>{t.daySummary}</div>
       </div>
       <div className="stagger" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {[
-          ['🍽️', meals.length, 'وجبات'],
-          ['🏋️', workoutsDone.length, 'تمارين'],
-          ['🔥', burned, 'محروق'],
-          ['👟', steps >= 1000 ? (steps / 1000).toFixed(1) + 'ك' : steps, 'خطوة'],
+          ['🍽️', meals.length, t.meals],
+          ['🏋️', workoutsDone.length, t.exercisesShort],
+          ['🔥', burned, t.burned],
+          ['👟', steps >= 1000 ? (steps / 1000).toFixed(1) + 'k' : steps, t.steps],
         ].map(([ic, val, lbl], i) => (
           <div key={i} style={{ flex: 1, ...card, padding: 10, textAlign: 'center' }}>
             <div style={{ fontSize: 18 }}>{ic}</div>
@@ -463,15 +473,15 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
         <WaterCard water={water} setWater={setWater} waterGoal={waterGoal} />
         {/* الخطوات */}
         <div style={{ ...card, textAlign: 'center', padding: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>👟 الخطوات</div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>👟 {t.stepsLabel}</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#a855f7', marginTop: 14 }}>{steps.toLocaleString()}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>الهدف {stepsGoal.toLocaleString()}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t.goal} {stepsGoal.toLocaleString()}</div>
           <div style={{ height: 8, background: 'var(--card2)', borderRadius: 6, overflow: 'hidden', margin: '10px 0 8px' }}>
             <div style={{ height: '100%', width: `${Math.min(100, steps / stepsGoal * 100)}%`, background: '#a855f7', borderRadius: 6 }} />
           </div>
           <div style={{ display: 'flex', gap: 5 }}>
             {[1000, 3000].map(s => (
-              <button key={s} onClick={() => setSteps(x => x + s)} style={{ flex: 1, padding: '7px 2px', borderRadius: 10, background: '#a855f722', color: '#c084fc', fontSize: 12, fontWeight: 700, border: '1px solid #a855f744' }}>+{s / 1000}ألف</button>
+              <button key={s} onClick={() => setSteps(x => x + s)} style={{ flex: 1, padding: '7px 2px', borderRadius: 10, background: '#a855f722', color: '#c084fc', fontSize: 12, fontWeight: 700, border: '1px solid #a855f744' }}>+{s / 1000}k</button>
             ))}
           </div>
         </div>
@@ -479,12 +489,12 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
 
       {/* الوجبات مجمّعة حسب النوع */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 8 }}>
-        <span style={{ fontWeight: 800, fontSize: 17 }}>وجبات اليوم ({meals.length})</span>
-        <button onClick={openAdd} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ أضف</button>
+        <span style={{ fontWeight: 800, fontSize: 17 }}>{t.todayMeals} ({meals.length})</span>
+        <button onClick={openAdd} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>{t.add}</button>
       </div>
 
       {meals.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-        ما سجّلت وجبات بعد 🍽️<br /><span style={{ fontSize: 13 }}>اضغط "+ أضف" واكتب أو صوّر أكلك</span>
+        {t.noMeals}<br /><span style={{ fontSize: 13 }}>{t.noMealsSub}</span>
       </div>}
 
       {groups.map(g => {
@@ -492,8 +502,8 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
         return (
           <div key={g.type} style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '0 4px' }}>
-              <span style={{ fontWeight: 800, fontSize: 15 }}>{mealEmoji(g.type)} {g.type}</span>
-              <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{gt} سعرة</span>
+              <span style={{ fontWeight: 800, fontSize: 15 }}>{mealEmoji(g.type)} {mealTypeLabel(g.type, t)}</span>
+              <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{gt} {t.calUnit}</span>
             </div>
             {g.items.map(m => (
               <MealRow key={m.id} m={m} goal={goal} delMeal={delMeal} editMeal={editMeal} />
@@ -504,8 +514,8 @@ function Home({ target, totals, net, burned, remaining, water, setWater, waterGo
 
       {/* تمارين اليوم المنجزة */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 8 }}>
-        <span style={{ fontWeight: 800, fontSize: 17 }}>🏋️ تمارين اليوم ({workoutsDone.length})</span>
-        <button onClick={() => setTab('workout')} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>+ تمرّن</button>
+        <span style={{ fontWeight: 800, fontSize: 17 }}>{t.todayWorkouts} ({workoutsDone.length})</span>
+        <button onClick={() => setTab('workout')} style={{ ...chip, background: goal.color, color: '#fff', padding: '6px 12px' }}>{t.train}</button>
       </div>
       {workoutsDone.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 20 }}>
         ما سويت تمارين بعد 💪<br /><span style={{ fontSize: 13 }}>اضغط "+ تمرّن" واختر تمرينك</span>
@@ -579,6 +589,7 @@ function MealRow({ m, goal, delMeal, editMeal }) {
 
 // ============ شيت تسجيل وجبة (مستقل — يحسب ويضيف بدون فتح المساعد) ============
 function AddMealSheet({ onClose, addMeal, goal, computeMeal }) {
+  const t = useT()
   const [mode, setMode] = useState('home') // home | text | voice | manual | barcode
   const [type, setType] = useState(guessType())
   const [busy, setBusy] = useState(false)
@@ -626,12 +637,12 @@ function AddMealSheet({ onClose, addMeal, goal, computeMeal }) {
           <div style={{ position: 'absolute', inset: 0, borderRadius: '24px 24px 0 0', background: 'rgba(11,17,32,.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             {busy && <>
               <div style={{ width: 56, height: 56, borderRadius: '50%', border: `4px solid ${goal.color}33`, borderTopColor: goal.color, animation: 'spin .8s linear infinite' }} />
-              <div style={{ color: 'var(--muted)' }}>أحسب سعراتك... 🧮</div>
+              <div style={{ color: 'var(--muted)' }}>{t.calculating}</div>
             </>}
             {done && <>
               <div style={{ fontSize: 50 }}>✅</div>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>تمت إضافة {done.name}</div>
-              <div style={{ color: goal.color, fontWeight: 700 }}>{done.cal} سعرة · {type}</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>{t.addedMeal} {done.name}</div>
+              <div style={{ color: goal.color, fontWeight: 700 }}>{done.cal} {t.calUnit} · {mealTypeLabel(type, t)}</div>
             </>}
           </div>
         )}
@@ -653,29 +664,29 @@ function AddMealSheet({ onClose, addMeal, goal, computeMeal }) {
   )
 
   return sheet(<>
-    <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 4 }}>سجّل وجبة جديدة</div>
-    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>اختر النوع والطريقة</div>
+    <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 4 }}>{t.logMeal}</div>
+    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>{t.chooseTypeMethod}</div>
 
     {/* منتقي النوع — يطبّق على كل الطرق */}
     <div style={{ marginBottom: 14 }}><MealTypePicker value={type} onChange={setType} color={goal.color} /></div>
 
     <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} style={{ display: 'none' }} />
     <div className="stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-      {opt('💬', 'نص', 'اكتب وجبتك', '#22c55e', () => setMode('text'))}
-      {opt('🎤', 'صوت', 'قول وجبتك', '#ec4899', () => setMode('voice'))}
-      {opt('📷', 'صورة', 'صوّر وجبتك', '#f97316', () => fileRef.current?.click())}
+      {opt('💬', t.text, t.textSub, '#22c55e', () => setMode('text'))}
+      {opt('🎤', t.voice, t.voiceSub, '#ec4899', () => setMode('voice'))}
+      {opt('📷', t.photo, t.photoSub, '#f97316', () => fileRef.current?.click())}
     </div>
     <div style={{ marginTop: 10 }}>
       <button onClick={() => setMode('barcode')} style={{ ...card, width: '100%', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>▦ باركود المنتج</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>امسح المنتجات المعلّبة بالكاميرا</div>
+        <div style={{ textAlign: t.dir === 'rtl' ? 'right' : 'left' }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{t.barcode}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t.barcodeSub}</div>
         </div>
         <div style={{ width: 46, height: 46, borderRadius: 14, background: '#6366f122', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📦</div>
       </button>
     </div>
     <button onClick={() => setMode('manual')} style={{ width: '100%', marginTop: 14, padding: 12, borderRadius: 12, background: 'transparent', color: goal.color, fontSize: 14, fontWeight: 700, border: `1px dashed ${goal.color}66` }}>
-      ✏️ تعرف القيم الغذائية؟ أدخلها يدوياً
+      {t.manualHint}
     </button>
   </>)
 }
@@ -907,19 +918,21 @@ function BarcodeScanner({ goal, onDetected, onClose }) {
   )
 }
 
-function mealEmoji(t) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[t] || '🍴' }
+function mealEmoji(type) { return { 'فطور': '🌅', 'غداء': '🍽️', 'عشاء': '🌙', 'سناك': '🍪' }[type] || '🍴' }
+function mealTypeLabel(type, t) { return { 'فطور': t.breakfast, 'غداء': t.lunch, 'عشاء': t.dinner, 'سناك': t.snack }[type] || type }
 function guessType() { const h = new Date().getHours(); return h < 11 ? 'فطور' : h < 16 ? 'غداء' : h < 21 ? 'عشاء' : 'سناك' }
 
 // منتقي نوع الوجبة
 function MealTypePicker({ value, onChange, color }) {
+  const tr = useT()
   return (
     <div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>نوع الوجبة</div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{tr.mealType}</div>
       <div style={{ display: 'flex', gap: 6 }}>
-        {['فطور', 'غداء', 'عشاء', 'سناك'].map(t => (
-          <button key={t} onClick={() => onChange(t)}
-            style={{ flex: 1, padding: '9px 2px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid var(--border)', background: value === t ? color : 'var(--card2)', color: value === t ? '#fff' : 'var(--muted)' }}>
-            {mealEmoji(t)} {t}
+        {['فطور', 'غداء', 'عشاء', 'سناك'].map(ty => (
+          <button key={ty} onClick={() => onChange(ty)}
+            style={{ flex: 1, padding: '9px 2px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid var(--border)', background: value === ty ? color : 'var(--card2)', color: value === ty ? '#fff' : 'var(--muted)' }}>
+            {mealEmoji(ty)} {mealTypeLabel(ty, tr)}
           </button>
         ))}
       </div>
@@ -929,6 +942,7 @@ function MealTypePicker({ value, onChange, color }) {
 
 // ============ حلقة الطاقة — القطعة المميزة ============
 function EnergyRing({ net, target, totals, burned, remaining, goal, pGoal, cGoal, fGoal }) {
+  const t = useT()
   const pct = Math.max(0, Math.min(100, (net / target) * 100))
   const R = 78, C = 2 * Math.PI * R
   const off = C - (pct / 100) * C
@@ -964,25 +978,25 @@ function EnergyRing({ net, target, totals, burned, remaining, goal, pGoal, cGoal
             style={{ '--circ': C, animation: 'ringDraw 1.1s cubic-bezier(.2,.8,.2,1) both', transition: 'stroke-dashoffset .5s' }} />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '1px' }}>{over ? 'تجاوزت بـ' : 'باقي لك'}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '1px' }}>{over ? t.exceeded : t.remaining}</div>
           <div style={{ fontSize: 42, fontWeight: 800, lineHeight: 1, color: over ? '#ef4444' : goal.color, animation: 'countUp .5s ease both' }}>
             {over ? net - target : left}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>سعرة · من {target}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{t.calUnit} · {t.of} {target}</div>
         </div>
       </div>
 
       {/* مأكول / محروق */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 22, marginTop: 6, fontSize: 13 }}>
-        <span style={{ color: 'var(--muted)' }}>🍽️ مأكول <b style={{ color: 'var(--text)' }}>{totals.cal}</b></span>
-        <span style={{ color: 'var(--muted)' }}>🔥 محروق <b style={{ color: '#ef4444' }}>{burned}</b></span>
+        <span style={{ color: 'var(--muted)' }}>🍽️ {t.eaten} <b style={{ color: 'var(--text)' }}>{totals.cal}</b></span>
+        <span style={{ color: 'var(--muted)' }}>🔥 {t.burned} <b style={{ color: '#ef4444' }}>{burned}</b></span>
       </div>
 
       {/* حلقات الماكرو الصغيرة */}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-        <MacroRing label="بروتين" val={totals.p} goal={pGoal} color="#ef4444" />
-        <MacroRing label="كارب" val={totals.c} goal={cGoal} color="#3b82f6" />
-        <MacroRing label="دهون" val={totals.f} goal={fGoal} color="#22c55e" />
+        <MacroRing label={t.protein} val={totals.p} goal={pGoal} color="#ef4444" />
+        <MacroRing label={t.carb} val={totals.c} goal={cGoal} color="#3b82f6" />
+        <MacroRing label={t.fat} val={totals.f} goal={fGoal} color="#22c55e" />
       </div>
     </div>
   )
@@ -1514,6 +1528,7 @@ function BMICard({ profile }) {
 
 // ============ الإعدادات ============
 function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact }) {
+  const { lang, setLang, t } = useLang()
   const [newFact, setNewFact] = useState('')
   const [editProfile, setEditProfile] = useState(false)
   const [editGoals, setEditGoals] = useState(false)
@@ -1615,9 +1630,21 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
         )}
       </Section>
 
+      {/* اللغة */}
+      <Section title={t.language}>
+        <div style={{ display: 'flex', gap: 8, padding: 12 }}>
+          {[['ar', 'العربية'], ['en', 'English']].map(([code, label]) => (
+            <button key={code} onClick={() => setLang(code)}
+              style={{ flex: 1, padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 15, background: lang === code ? goal.color : 'var(--card2)', color: lang === code ? '#fff' : 'var(--muted)', border: '1px solid var(--border)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </Section>
+
       {/* ذاكرة المساعد — يتعلّم منك */}
       <div style={{ marginTop: 18 }}>
-        <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>🧠 ما يتذكّره المساعد عنك</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>{t.aiMemory}</div>
         <div style={{ ...card }}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
             المساعد يتعلّم تفضيلاتك وأحجام حصصك تلقائياً وأنت تسولف معه، ويستخدمها ليعطيك ردود أدق. تقدر تضيف أو تحذف.

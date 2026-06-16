@@ -1,0 +1,88 @@
+import { createContext, useContext } from 'react'
+
+export const TR = {
+  ar: {
+    dir: 'rtl',
+    appName: 'صحّتي', appTagline: 'مساعدك الغذائي الذكي — وش هدفك؟',
+    currentGoal: 'هدفك الحالي', change: 'تغيير',
+    // tabs
+    home: 'الرئيسية', assistant: 'المساعد', workouts: 'تمارين', recipes: 'وصفات', progress: 'تقدمي', settings: 'الإعدادات',
+    // goals
+    lose: 'تخسيس', maintain: 'تثبيت', gain: 'زيادة وزن', bulk: 'تضخيم',
+    loseDesc: 'حرق الدهون وخسارة الوزن', maintainDesc: 'المحافظة على وزنك الحالي', gainDesc: 'زيادة الوزن الصحي', bulkDesc: 'بناء العضلات والكتلة',
+    // onboarding
+    yourInfo: 'معلوماتك', infoSub: 'عشان نحسب احتياجك اليومي بدقة',
+    weight: 'الوزن (كجم)', height: 'الطول (سم)', age: 'العمر', gender: 'الجنس', male: 'ذكر 👨', female: 'أنثى 👩',
+    activity: 'نشاطك اليومي', actLow: 'قليل جداً (مكتبي)', actLight: 'خفيف (تمرين بسيط)', actMed: 'متوسط (3-5 أيام)', actHigh: 'عالي (يومي)',
+    yourGoal: '🎯 هدفك', targetWeight: 'الوزن الهدف (كجم)', inWeeks: 'خلال كم أسبوع؟', start: 'يلا نبدأ 🚀',
+    disclaimer: '⚕️ هذا التطبيق للمساعدة والتوعية فقط، وليس بديلاً عن استشارة الطبيب أو أخصائي التغذية. القيم تقديرية. راجع مختصاً قبل أي نظام غذائي أو رياضي.',
+    // home
+    goodMorning: 'صباح الخير', goodEvening: 'مساء الخير', daySummary: 'هذا ملخص يومك',
+    meals: 'وجبات', exercisesShort: 'تمارين', burned: 'محروق', steps: 'خطوة',
+    calories: 'السعرات الحرارية', eaten: 'مأكول', remaining: 'باقي لك', exceeded: 'تجاوزت بـ', calUnit: 'سعرة', of: 'من',
+    protein: 'بروتين', carb: 'كارب', fat: 'دهون',
+    water: 'الماء', stepsLabel: 'الخطوات', goal: 'الهدف',
+    todayMeals: 'وجبات اليوم', add: '+ أضف', noMeals: 'ما سجّلت وجبات بعد 🍽️', noMealsSub: 'اضغط "+ أضف" واكتب أو صوّر أكلك',
+    todayWorkouts: '🏋️ تمارين اليوم', train: '+ تمرّن', noWorkouts: 'ما سويت تمارين بعد 💪', noWorkoutsSub: 'اضغط "+ تمرّن" واختر تمرينك',
+    burnedCal: 'سعرة محروقة',
+    // add sheet
+    logMeal: 'سجّل وجبة جديدة', chooseTypeMethod: 'اختر النوع والطريقة', mealType: 'نوع الوجبة',
+    breakfast: 'فطور', lunch: 'غداء', dinner: 'عشاء', snack: 'سناك',
+    text: 'نص', textSub: 'اكتب وجبتك', voice: 'صوت', voiceSub: 'قول وجبتك', photo: 'صورة', photoSub: 'صوّر وجبتك',
+    barcode: '▦ باركود المنتج', barcodeSub: 'امسح المنتجات المعلّبة بالكاميرا',
+    manualHint: '✏️ تعرف القيم الغذائية؟ أدخلها يدوياً',
+    calculating: 'أحسب سعراتك... 🧮', addedMeal: 'تمت إضافة', back: '← رجوع',
+    // settings
+    settingsTitle: 'الإعدادات', premiumTitle: 'صحّتي — نسختك الكاملة', premiumSub: 'كل المميزات مفتوحة ومجانية 🎉',
+    profile: 'الملف الشخصي', changeGoal: 'تغيير الهدف', editData: 'تعديل بياناتك',
+    dailyGoals: 'الأهداف اليومية', waterGoal: 'هدف الماء', stepsGoal: 'هدف الخطوات', mlDaily: 'مل يومياً', stepsDaily: 'خطوة يومياً',
+    appleHealth: 'ربط Apple Health', appleHealthSub: 'يحتاج تطبيق آيفون (قريباً)',
+    aiMemory: '🧠 ما يتذكّره المساعد عنك', aiMemoryHint: 'المساعد يتعلّم تفضيلاتك وأحجام حصصك تلقائياً وأنت تسولف معه، ويستخدمها ليعطيك ردود أدق. تقدر تضيف أو تحذف.',
+    aiMemoryEmpty: 'ما تعلّم شي بعد — سولف مع المساعد وقول له تفضيلاتك 💬', addFactPh: 'أضف معلومة (مثلاً: أنا نباتي)',
+    language: 'اللغة', langName: 'العربية',
+    about: 'عن التطبيق', medicalNote: 'تنبيه طبي', medicalNoteSub: 'معلومات مهمة عن استخدام التطبيق',
+    data: 'البيانات', resetToday: 'تصفير بيانات اليوم', resetTodaySub: 'يبدأ يومك من جديد', resetAll: 'مسح كل البيانات', resetAllSub: 'إعادة ضبط كاملة',
+    save: 'حفظ', cancel: 'إلغاء', version: 'صحّتي · الإصدار 1.0 🥗',
+  },
+  en: {
+    dir: 'ltr',
+    appName: 'Sehhaty', appTagline: 'Your smart nutrition coach — what\'s your goal?',
+    currentGoal: 'Your goal', change: 'Change',
+    home: 'Home', assistant: 'Coach', workouts: 'Workouts', recipes: 'Recipes', progress: 'Progress', settings: 'Settings',
+    lose: 'Lose weight', maintain: 'Maintain', gain: 'Gain weight', bulk: 'Build muscle',
+    loseDesc: 'Burn fat and lose weight', maintainDesc: 'Keep your current weight', gainDesc: 'Healthy weight gain', bulkDesc: 'Build muscle and mass',
+    yourInfo: 'Your info', infoSub: 'To calculate your daily needs accurately',
+    weight: 'Weight (kg)', height: 'Height (cm)', age: 'Age', gender: 'Gender', male: 'Male 👨', female: 'Female 👩',
+    activity: 'Daily activity', actLow: 'Very low (desk)', actLight: 'Light (some exercise)', actMed: 'Moderate (3-5 days)', actHigh: 'High (daily)',
+    yourGoal: '🎯 Your target', targetWeight: 'Target weight (kg)', inWeeks: 'In how many weeks?', start: 'Let\'s go 🚀',
+    disclaimer: '⚕️ This app is for guidance and awareness only, not a substitute for a doctor or dietitian. Values are estimates. Consult a professional before any diet or exercise plan.',
+    goodMorning: 'Good morning', goodEvening: 'Good evening', daySummary: 'Here\'s your day',
+    meals: 'meals', exercisesShort: 'workouts', burned: 'burned', steps: 'steps',
+    calories: 'Calories', eaten: 'Eaten', remaining: 'Remaining', exceeded: 'Over by', calUnit: 'kcal', of: 'of',
+    protein: 'Protein', carb: 'Carbs', fat: 'Fat',
+    water: 'Water', stepsLabel: 'Steps', goal: 'Goal',
+    todayMeals: 'Today\'s meals', add: '+ Add', noMeals: 'No meals logged yet 🍽️', noMealsSub: 'Tap "+ Add" to type or snap your food',
+    todayWorkouts: '🏋️ Today\'s workouts', train: '+ Train', noWorkouts: 'No workouts yet 💪', noWorkoutsSub: 'Tap "+ Train" and pick an exercise',
+    burnedCal: 'kcal burned',
+    logMeal: 'Log a new meal', chooseTypeMethod: 'Choose type & method', mealType: 'Meal type',
+    breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack',
+    text: 'Text', textSub: 'Type your meal', voice: 'Voice', voiceSub: 'Say your meal', photo: 'Photo', photoSub: 'Snap your meal',
+    barcode: '▦ Product barcode', barcodeSub: 'Scan packaged products with camera',
+    manualHint: '✏️ Know the values? Enter them manually',
+    calculating: 'Calculating... 🧮', addedMeal: 'Added', back: '← Back',
+    settingsTitle: 'Settings', premiumTitle: 'Sehhaty — Full version', premiumSub: 'All features unlocked & free 🎉',
+    profile: 'Profile', changeGoal: 'Change goal', editData: 'Edit your data',
+    dailyGoals: 'Daily goals', waterGoal: 'Water goal', stepsGoal: 'Steps goal', mlDaily: 'ml per day', stepsDaily: 'steps per day',
+    appleHealth: 'Connect Apple Health', appleHealthSub: 'Needs iOS app (soon)',
+    aiMemory: '🧠 What your coach remembers', aiMemoryHint: 'Your coach learns your preferences and portion sizes as you chat, and uses them for more accurate answers. You can add or remove.',
+    aiMemoryEmpty: 'Nothing learned yet — chat with your coach and tell it your preferences 💬', addFactPh: 'Add a fact (e.g. I\'m vegetarian)',
+    language: 'Language', langName: 'English',
+    about: 'About', medicalNote: 'Medical disclaimer', medicalNoteSub: 'Important info about using the app',
+    data: 'Data', resetToday: 'Reset today\'s data', resetTodaySub: 'Start your day fresh', resetAll: 'Erase all data', resetAllSub: 'Full reset',
+    save: 'Save', cancel: 'Cancel', version: 'Sehhaty · Version 1.0 🥗',
+  },
+}
+
+export const LangContext = createContext({ lang: 'ar', t: TR.ar, setLang: () => {} })
+export const useT = () => useContext(LangContext).t
+export const useLang = () => useContext(LangContext)

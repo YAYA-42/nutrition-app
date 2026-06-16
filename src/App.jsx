@@ -29,6 +29,7 @@ export default function App() {
   const [workoutsDone, setWorkoutsDone] = useState(() => load('workoutsDone', []))
   const [waterGoal, setWaterGoal] = useState(() => load('waterGoal', 2500)) // الهدف اليومي بالمل
   const [stepsGoal, setStepsGoal] = useState(() => load('stepsGoal', 6000))
+  const [aiMemory, setAiMemory] = useState(() => load('aiMemory', [])) // ذاكرة الذكاء عن المستخدم
   const [burned, setBurned] = useState(() => load('burned', 0))
   const [weights, setWeights] = useState(() => load('weights', []))
   const [savedRecipes, setSavedRecipes] = useState(() => load('recipes', []))
@@ -58,6 +59,7 @@ export default function App() {
   useEffect(() => save('workoutsDone', workoutsDone), [workoutsDone])
   useEffect(() => save('waterGoal', waterGoal), [waterGoal])
   useEffect(() => save('stepsGoal', stepsGoal), [stepsGoal])
+  useEffect(() => save('aiMemory', aiMemory), [aiMemory])
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
   useEffect(() => save('threads', threads), [threads])
@@ -82,7 +84,10 @@ export default function App() {
 
 أسلوبك: لهجة سعودية بسيطة ومتزنة، ودود ومشجّع بدون مبالغة. ما تكرر نفس عبارات الترحيب في كل رد. تسأل سؤال متابعة لو احتجت. صادق ومباشر.
 
-معلومات المستخدم: هدفه ${goal.name}، احتياجه ${target} سعرة باليوم.`
+معلومات المستخدم: هدفه ${goal.name}، احتياجه ${target} سعرة باليوم.
+${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (استخدمها لتخصيص ردودك ودقّة حساباتك):\n${aiMemory.map(m => '• ' + m.text).join('\n')}` : ''}
+
+التعلّم: إذا أخبرك المستخدم بتفضيل دائم أو معلومة تخصّه أو صحّح لك حسبة (أمثلة: "أنا نباتي"، "ما أحب السمك"، "عندي حساسية مكسرات"، "صحن الكبسة عندي كبير حطه ٢ كوب"، "أتمرن في البيت بدون أجهزة")، تذكّرها بإضافة سطر في نهاية ردك: [REMEMBER]المعلومة باختصار[/REMEMBER]. لا تضيف معلومات عابرة أو وجبة اليوم، فقط الأشياء الدائمة المفيدة لاحقاً.`
 
   const SYSTEMS = {
     food: baseSystem + `\nأنت مدرّب تغذية متابع. تخصصك: الإجابة على أسئلة المستخدم عن التغذية، تقديم نصائح واقتراحات أنظمة غذائية، تقييم أكله ومتابعة تقدّمه، وتحفيزه. تعرف الأكل السعودي والخليجي جيداً. لو طلب صراحةً تسجيل وجبة (قال "سجّل اني أكلت كذا")، احسبها وأرجع في النهاية سطر: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL] — غير كذا لا تسجّل، فقط انصح وأجب. (التسجيل العادي عند المستخدم في زر "أضف وجبة").`,
@@ -114,7 +119,7 @@ export default function App() {
       const decoder = new TextDecoder()
       let reply = ''
       // نظّف الوسوم من العرض الحي
-      const clean = (s) => s.replace(/\[(MEAL|RECIPE|EX)\][\s\S]*?(\[\/\1\]|$)/g, '').trim()
+      const clean = (s) => s.replace(/\[(MEAL|RECIPE|EX|REMEMBER)\][\s\S]*?(\[\/\1\]|$)/g, '').trim()
       setThreads(t => ({ ...t, [ctx]: [...newMsgs, { role: 'assistant', content: '' }] }))
       while (true) {
         const { done, value } = await reader.read()
@@ -132,6 +137,9 @@ export default function App() {
         const validType = ['فطور', 'غداء', 'عشاء', 'سناك'].includes(mtype) ? mtype : undefined
         addMeal({ name, cal: +cal || 0, p: +p || 0, c: +c || 0, f: +f || 0, ...(validType ? { type: validType } : {}) })
       }
+      // تعلّم — يحفظ معلومات دائمة عن المستخدم
+      const remMatches = [...reply.matchAll(/\[REMEMBER\](.*?)\[\/REMEMBER\]/gs)]
+      remMatches.forEach(rm => rememberFact(rm[1].trim()))
       const recMatch = reply.match(/\[RECIPE\](.*?)\[\/RECIPE\]/s)
       if (recMatch) {
         const [name, cal, ing, steps] = recMatch[1].split('|').map(s => s.trim())
@@ -155,7 +163,8 @@ export default function App() {
 
   // حساب صامت لوجبة وإضافتها مباشرة (بدون فتح الشات)
   async function computeMeal(content, forcedType) {
-    const sys = `أنت حاسبة سعرات دقيقة تعرف الأكل السعودي والخليجي (كبسة، جريش، مندي، معصوب، تمر). المستخدم يصف وجبة بالنص أو بصورة. احسب السعرات والبروتين والكارب والدهون. مهم جداً: أرجع سطر واحد فقط بدون أي كلام أو شرح إطلاقاً، بهذا الشكل بالضبط: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]`
+    const memo = aiMemory.length ? `\nأشياء تعرفها عن المستخدم خذها بالحسبان (تفضيلات، أحجام حصصه، حساسية): ${aiMemory.map(m => m.text).join(' | ')}` : ''
+    const sys = `أنت حاسبة سعرات دقيقة تعرف الأكل السعودي والخليجي (كبسة، جريش، مندي، معصوب، تمر). المستخدم يصف وجبة بالنص أو بصورة. احسب السعرات والبروتين والكارب والدهون.${memo}\nمهم جداً: أرجع سطر واحد فقط بدون أي كلام أو شرح إطلاقاً، بهذا الشكل بالضبط: [MEAL]اسم الوجبة|السعرات|البروتين|الكارب|الدهون[/MEAL]`
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -181,6 +190,14 @@ export default function App() {
   }
 
   function clearThread(ctx) { setThreads(t => ({ ...t, [ctx]: [] })) }
+  function rememberFact(text) {
+    if (!text || text.length < 3) return
+    setAiMemory(m => {
+      if (m.some(x => x.text === text)) return m // ما يكرر
+      return [...m, { text, id: Date.now() + Math.random() }].slice(-25) // آخر 25 معلومة
+    })
+  }
+  function forgetFact(id) { setAiMemory(m => m.filter(x => x.id !== id)) }
   function mealType() {
     const h = new Date().getHours()
     if (h < 11) return 'فطور'; if (h < 16) return 'غداء'; if (h < 21) return 'عشاء'; return 'سناك'
@@ -233,7 +250,7 @@ export default function App() {
         {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }} />}
-        {tab === 'settings' && <Settings {...{ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target }} />}
+        {tab === 'settings' && <Settings {...{ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact }} />}
       </div>
 
       {/* شيت تسجيل الوجبة */}
@@ -1496,7 +1513,8 @@ function BMICard({ profile }) {
 }
 
 // ============ الإعدادات ============
-function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target }) {
+function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact }) {
+  const [newFact, setNewFact] = useState('')
   const [editProfile, setEditProfile] = useState(false)
   const [editGoals, setEditGoals] = useState(false)
   const [pf, setPf] = useState({ ...profile })
@@ -1596,6 +1614,28 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
           </div>
         )}
       </Section>
+
+      {/* ذاكرة المساعد — يتعلّم منك */}
+      <div style={{ marginTop: 18 }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>🧠 ما يتذكّره المساعد عنك</div>
+        <div style={{ ...card }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
+            المساعد يتعلّم تفضيلاتك وأحجام حصصك تلقائياً وأنت تسولف معه، ويستخدمها ليعطيك ردود أدق. تقدر تضيف أو تحذف.
+          </div>
+          {aiMemory.length === 0 && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: 10 }}>ما تعلّم شي بعد — سولف مع المساعد وقول له تفضيلاتك 💬</div>}
+          {aiMemory.map(m => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ flex: 1, fontSize: 14 }}>• {m.text}</span>
+              <button onClick={() => forgetFact(m.id)} style={{ ...chip, padding: '3px 8px', fontSize: 12 }}>🗑️</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <input value={newFact} onChange={e => setNewFact(e.target.value)} placeholder="أضف معلومة (مثلاً: أنا نباتي)" onKeyDown={e => e.key === 'Enter' && newFact.trim() && (rememberFact(newFact.trim()), setNewFact(''))}
+              style={{ flex: 1, padding: '10px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 13, width: '100%' }} />
+            <button onClick={() => { if (newFact.trim()) { rememberFact(newFact.trim()); setNewFact('') } }} style={{ padding: '0 16px', borderRadius: 10, background: goal.color, color: '#fff', fontSize: 13, fontWeight: 700 }}>أضف</button>
+          </div>
+        </div>
+      </div>
 
       {/* عن التطبيق */}
       <Section title="عن التطبيق">

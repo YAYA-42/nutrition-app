@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { GOALS, EXERCISES, QUICK_MEALS } from './data.js'
 import { TR, LangContext, useT, useLang } from './i18n.js'
+import { supabase, pushData, pullData, applyData } from './supabase.js'
 
 // ====== أدوات الحفظ ======
 const todayKey = () => new Date().toISOString().slice(0, 10)
@@ -55,6 +56,9 @@ function AppInner({ lang, setLang, t }) {
   const [loading, setLoading] = useState('')  // اسم الخانة اللي تحمّل حالياً
   const [addOpen, setAddOpen] = useState(false) // شيت تسجيل الوجبة
   const pendingType = useRef(null) // نوع الوجبة المختار من الشيت (يطبّق على القادم)
+  const [session, setSession] = useState(null) // جلسة Supabase
+  const [authOpen, setAuthOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState('')
 
   // ====== تصفير يومي ======
   useEffect(() => {
@@ -79,6 +83,42 @@ function AppInner({ lang, setLang, t }) {
   useEffect(() => save('weights', weights), [weights])
   useEffect(() => save('recipes', savedRecipes), [savedRecipes])
   useEffect(() => save('threads', threads), [threads])
+
+  // ====== جلسة Supabase ======
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  // عند تسجيل الدخول: اجلب البيانات من السحابة مرة وحدة
+  useEffect(() => {
+    if (!session) return
+    const uid = session.user.id
+    const flag = 'pulled_' + uid
+    if (sessionStorage.getItem(flag)) return
+    ;(async () => {
+      const { payload, error } = await pullData(uid)
+      sessionStorage.setItem(flag, '1')
+      if (error) return
+      if (payload && Object.keys(payload).length) {
+        applyData(payload); location.reload() // حمّل بيانات السحابة
+      } else {
+        pushData(uid) // أول دخول — ارفع بيانات الجهاز
+      }
+    })()
+  }, [session])
+
+  // مزامنة تلقائية (debounce) عند تغيّر البيانات وأنت مسجّل دخول
+  useEffect(() => {
+    if (!session) return
+    setSyncStatus('syncing')
+    const id = setTimeout(async () => {
+      await pushData(session.user.id)
+      setSyncStatus('synced')
+    }, 2500)
+    return () => clearTimeout(id)
+  }, [session, profile, goalId, meals, water, steps, burned, weights, savedRecipes, threads, workoutsDone, waterGoal, stepsGoal, aiMemory])
 
   // ====== مجاميع ======
   const goal = GOALS.find(g => g.id === goalId) || GOALS[1]
@@ -270,11 +310,14 @@ ${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (ا�
         {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }} />}
-        {tab === 'settings' && <Settings {...{ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact }} />}
+        {tab === 'settings' && <Settings {...{ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact, session, syncStatus, openAuth: () => setAuthOpen(true), signOut: () => supabase.auth.signOut() }} />}
       </div>
 
       {/* شيت تسجيل الوجبة */}
       {addOpen && <AddMealSheet onClose={() => setAddOpen(false)} addMeal={addMeal} goal={goal} computeMeal={computeMeal} />}
+
+      {/* نافذة الحساب */}
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} goal={goal} />}
 
       {/* شريط التبويبات العائم */}
       <div style={nav}>
@@ -1526,8 +1569,61 @@ function BMICard({ profile }) {
   )
 }
 
+// ============ نافذة الحساب (تسجيل دخول / إنشاء) ============
+function AuthModal({ onClose, goal }) {
+  const t = useT()
+  const [mode, setMode] = useState('signin') // signin | signup
+  const [email, setEmail] = useState('')
+  const [pass, setPass] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  async function submit() {
+    if (!email.trim() || pass.length < 6) { setMsg(t.accountErr); return }
+    setBusy(true); setMsg('')
+    try {
+      if (mode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: pass })
+        if (error) { setMsg(error.message); setBusy(false); return }
+        if (!data.session) { setMsg(t.checkEmail); setBusy(false); return }
+        onClose()
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass })
+        if (error) { setMsg(error.message); setBusy(false); return }
+        onClose()
+      }
+    } catch (e) { setMsg(String(e.message || e)) }
+    setBusy(false)
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(0,0,0,.6)', animation: 'backdropIn .2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 380, ...card, padding: 22, animation: 'floatIn .35s ease' }}>
+        <div style={{ textAlign: 'center', marginBottom: 18 }}>
+          <div style={{ fontSize: 44 }}>☁️</div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginTop: 4 }}>{mode === 'signup' ? t.signUp : t.signIn}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{t.notSignedIn}</div>
+        </div>
+        <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder={t.email} autoComplete="email"
+          style={{ width: '100%', padding: '13px 16px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, marginBottom: 10 }} />
+        <input value={pass} onChange={e => setPass(e.target.value)} type="password" placeholder={t.password} autoComplete="current-password"
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{ width: '100%', padding: '13px 16px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16 }} />
+        {msg && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#3b82f622', color: '#93c5fd', fontSize: 13, textAlign: 'center' }}>{msg}</div>}
+        <button disabled={busy} onClick={submit} style={{ ...primaryBtn, background: goal.color, marginTop: 14, opacity: busy ? .6 : 1 }}>
+          {busy ? '...' : (mode === 'signup' ? t.signUp : t.signIn)}
+        </button>
+        <button onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMsg('') }}
+          style={{ width: '100%', marginTop: 10, padding: 10, background: 'transparent', color: 'var(--muted)', fontSize: 13 }}>
+          {mode === 'signup' ? t.haveAccount : t.noAccount}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ============ الإعدادات ============
-function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact }) {
+function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoal, stepsGoal, setStepsGoal, target, aiMemory, forgetFact, rememberFact, session, syncStatus, openAuth, signOut }) {
   const { lang, setLang, t } = useLang()
   const [newFact, setNewFact] = useState('')
   const [editProfile, setEditProfile] = useState(false)
@@ -1570,19 +1666,49 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
 
   return (
     <div className="fade">
-      <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>الإعدادات</div>
+      <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>{t.settingsTitle}</div>
+
+      {/* الحساب + الحفظ السحابي */}
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>{t.account}</div>
+        <div style={{ ...card }}>
+          {session ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: `${goal.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>☁️</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{session.user.email}</div>
+                  <div style={{ fontSize: 12, color: '#22c55e' }}>{syncStatus === 'syncing' ? t.syncing : t.syncOn}</div>
+                </div>
+              </div>
+              <button onClick={signOut} style={{ width: '100%', marginTop: 12, padding: 11, borderRadius: 12, background: 'var(--card2)', color: '#ef4444', fontWeight: 700, fontSize: 14 }}>{t.signOut}</button>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: `${goal.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>☁️</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{t.cloudSync}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t.notSignedIn}</div>
+                </div>
+              </div>
+              <button onClick={openAuth} style={{ ...primaryBtn, background: goal.color }}>{t.signIn}</button>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* بانر مميز */}
       <div style={{ ...card, marginTop: 14, background: `linear-gradient(135deg, ${goal.color}, ${goal.color}99)`, border: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ fontSize: 32 }}>✦</div>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>صحّتي — نسختك الكاملة</div>
-          <div style={{ fontSize: 12, color: '#ffffffcc' }}>كل المميزات مفتوحة ومجانية 🎉</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: '#fff' }}>{t.premiumTitle}</div>
+          <div style={{ fontSize: 12, color: '#ffffffcc' }}>{t.premiumSub}</div>
         </div>
       </div>
 
       {/* الملف الشخصي */}
-      <Section title="الملف الشخصي">
+      <Section title={t.profile}>
         <Row icon="🎯" color={goal.color} title="تغيير الهدف" sub={`${goal.emoji} ${goal.name}`} onClick={() => setGoalId(null)} />
         {!editProfile ? (
           <Row icon="📊" color="#3b82f6" title="تعديل بياناتك" sub={`${profile.weight}كجم · ${profile.height}سم · ${profile.age}سنة · ${target} سعرة`} onClick={() => { setPf({ ...profile }); setEditProfile(true) }} last />

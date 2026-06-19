@@ -43,6 +43,11 @@ export const TR = {
     about: 'عن التطبيق', medicalNote: 'تنبيه طبي', medicalNoteSub: 'معلومات مهمة عن استخدام التطبيق',
     data: 'البيانات', resetToday: 'تصفير بيانات اليوم', resetTodaySub: 'يبدأ يومك من جديد', resetAll: 'مسح كل البيانات', resetAllSub: 'إعادة ضبط كاملة',
     save: 'حفظ', cancel: 'إلغاء', version: 'صحّتي · الإصدار 1.0 🥗',
+    account: 'الحساب', signIn: 'تسجيل الدخول', signUp: 'إنشاء حساب', signOut: 'تسجيل الخروج',
+    email: 'الإيميل', password: 'كلمة المرور', cloudSync: 'حفظ سحابي', syncOn: 'بياناتك محفوظة بالسحابة ☁️',
+    notSignedIn: 'سجّل دخولك يحفظ بياناتك ويفتحها من أي جهاز', synced: 'تمت المزامنة', syncing: 'يزامن...',
+    haveAccount: 'عندك حساب؟ سجّل دخول', noAccount: 'ما عندك حساب؟ أنشئ واحد', accountErr: 'تأكد من الإيميل وكلمة المرور',
+    checkEmail: 'تأكد من إيميلك لتفعيل الحساب 📧', signedInAs: 'مسجّل دخول',
   },
   en: {
     dir: 'ltr',
@@ -80,6 +85,11 @@ export const TR = {
     about: 'About', medicalNote: 'Medical disclaimer', medicalNoteSub: 'Important info about using the app',
     data: 'Data', resetToday: 'Reset today\'s data', resetTodaySub: 'Start your day fresh', resetAll: 'Erase all data', resetAllSub: 'Full reset',
     save: 'Save', cancel: 'Cancel', version: 'Sehhaty · Version 1.0 🥗',
+    account: 'Account', signIn: 'Sign in', signUp: 'Sign up', signOut: 'Sign out',
+    email: 'Email', password: 'Password', cloudSync: 'Cloud sync', syncOn: 'Your data is backed up ☁️',
+    notSignedIn: 'Sign in to back up your data and access it anywhere', synced: 'Synced', syncing: 'Syncing...',
+    haveAccount: 'Have an account? Sign in', noAccount: 'No account? Create one', accountErr: 'Check your email and password',
+    checkEmail: 'Check your email to confirm your account 📧', signedInAs: 'Signed in',
   },
 }
 

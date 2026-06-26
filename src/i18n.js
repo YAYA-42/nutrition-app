@@ -48,6 +48,30 @@ export const TR = {
     notSignedIn: 'سجّل دخولك يحفظ بياناتك ويفتحها من أي جهاز', synced: 'تمت المزامنة', syncing: 'يزامن...',
     haveAccount: 'عندك حساب؟ سجّل دخول', noAccount: 'ما عندك حساب؟ أنشئ واحد', accountErr: 'تأكد من الإيميل وكلمة المرور',
     checkEmail: 'تأكد من إيميلك لتفعيل الحساب 📧', signedInAs: 'مسجّل دخول',
+    // settings extra
+    editDataSub: (w, h, a, c) => `${w}كجم · ${h}سم · ${a}سنة · ${c} سعرة`, activityWord: 'النشاط',
+    actLowS: 'قليل', actLightS: 'خفيف', actMedS: 'متوسط', actHighS: 'عالي',
+    // progress
+    todayTracking: '📅 متابعتك اليوم', currentWeight: 'الوزن الحالي', kg: 'كجم', fromStart: 'من البداية',
+    logWeight: 'سجّل وزن جديد', logBtn: '＋ سجّل', bmi: 'مؤشر كتلة الجسم', weightTrend: '📈 تطور الوزن',
+    weightTrendEmpty: '📈 سجّل وزنك أكثر من مرة عشان يطلع لك رسم التطور',
+    yourTarget: '🎯 هدفك', startW: 'البداية', current: 'الحالي', target: 'الهدف', remainingW: 'باقي لك', duration: 'المدة', week: 'أسبوع',
+    bmiThin: 'نحافة', bmiNormal: 'طبيعي', bmiOver: 'زيادة', bmiObese: 'سمنة',
+    // workout
+    coach: '🧠 المدرب الذكي', library: '📚 مكتبة التمارين', all: 'الكل', gym: '🏋️ نادي', homePlace: '🏠 بيت',
+    exercisesOf: 'تمارين', exCount: 'تمارين', steps2: 'خطوات الأداء', level: 'المستوى', didIt: '🔥 سويته — احسب الحرق', logged: '✅ سجّلت',
+    noExHere: 'ما فيه تمارين هنا — جرّب "الكل"', logExercises: '💪 ثبّت التمارين',
+    // recipes
+    cookWithMe: '👨‍🍳 اطبخ معي', saved: '📒 المحفوظة', noSaved: 'ما عندك وصفات محفوظة — روح "اطبخ معي" واطلب وصفة، وتنحفظ هنا تلقائياً 👨‍🍳',
+    ingredients: 'المقادير', method: 'الطريقة', delete: '🗑️ حذف',
+    // entry screens
+    typeMeal: '✍️ اكتب وجبتك', describeMeal: 'صف وجبتك وأنا أحسب سعراتها', calcLog: '✅ احسب وسجّل',
+    voiceMeal: '🎤 سجّل بصوتك', micHint: 'اضغط المايك وقول وش أكلت', listening: 'أتكلم الحين... أسمعك 👂',
+    transcript: 'الكلام (عدّله لو فيه غلط):', noHeard: 'ما سمعت شي، حاول مرة ثانية', confirmText: 'تأكد من الكلام وعدّله لو فيه غلط ✏️',
+    manualEntry: '✏️ إدخال يدوي', mealName: 'اسم الوجبة (مثلاً: شاورما)', caloriesL: 'السعرات 🔥', proteinG: 'بروتين (g)', carbG: 'كارب (g)', fatG: 'دهون (g)', addMealBtn: '✅ أضف الوجبة',
+    barcodeScan: '📷 امسح الباركود بالكاميرا', orType: 'أو اكتب الرقم يدوياً', search: 'بحث', notFound: 'ما لقيت المنتج — جرّب رقم ثاني أو أدخله يدوياً', aimCamera: 'وجّه الكاميرا على الباركود 📷', stopScan: 'إيقاف', addToMeals: '✅ أضف للوجبات',
+    // chat
+    clearChat: '🗑️ مسح', typing: 'يكتب...',
   },
   en: {
     dir: 'ltr',
@@ -90,6 +114,24 @@ export const TR = {
     notSignedIn: 'Sign in to back up your data and access it anywhere', synced: 'Synced', syncing: 'Syncing...',
     haveAccount: 'Have an account? Sign in', noAccount: 'No account? Create one', accountErr: 'Check your email and password',
     checkEmail: 'Check your email to confirm your account 📧', signedInAs: 'Signed in',
+    editDataSub: (w, h, a, c) => `${w}kg · ${h}cm · ${a}y · ${c} kcal`, activityWord: 'Activity',
+    actLowS: 'Low', actLightS: 'Light', actMedS: 'Moderate', actHighS: 'High',
+    todayTracking: '📅 Today\'s tracking', currentWeight: 'Current weight', kg: 'kg', fromStart: 'from start',
+    logWeight: 'Log new weight', logBtn: '＋ Log', bmi: 'Body Mass Index (BMI)', weightTrend: '📈 Weight trend',
+    weightTrendEmpty: '📈 Log your weight more than once to see your trend',
+    yourTarget: '🎯 Your target', startW: 'Start', current: 'Current', target: 'Target', remainingW: 'Remaining', duration: 'Duration', week: 'weeks',
+    bmiThin: 'Underweight', bmiNormal: 'Normal', bmiOver: 'Overweight', bmiObese: 'Obese',
+    coach: '🧠 AI Coach', library: '📚 Exercise library', all: 'All', gym: '🏋️ Gym', homePlace: '🏠 Home',
+    exercisesOf: 'exercises', exCount: 'exercises', steps2: 'How to do it', level: 'Level', didIt: '🔥 Done — count burn', logged: '✅ Logged',
+    noExHere: 'No exercises here — try "All"', logExercises: '💪 Log exercises',
+    cookWithMe: '👨‍🍳 Cook with me', saved: '📒 Saved', noSaved: 'No saved recipes — go to "Cook with me" and ask for a recipe, it saves here automatically 👨‍🍳',
+    ingredients: 'Ingredients', method: 'Method', delete: '🗑️ Delete',
+    typeMeal: '✍️ Type your meal', describeMeal: 'Describe your meal and I\'ll calculate it', calcLog: '✅ Calculate & log',
+    voiceMeal: '🎤 Log by voice', micHint: 'Tap the mic and say what you ate', listening: 'Listening... 👂',
+    transcript: 'Transcript (edit if wrong):', noHeard: 'Didn\'t catch that, try again', confirmText: 'Check the text and edit if wrong ✏️',
+    manualEntry: '✏️ Manual entry', mealName: 'Meal name (e.g. Shawarma)', caloriesL: 'Calories 🔥', proteinG: 'Protein (g)', carbG: 'Carbs (g)', fatG: 'Fat (g)', addMealBtn: '✅ Add meal',
+    barcodeScan: '📷 Scan barcode with camera', orType: 'Or type the number manually', search: 'Search', notFound: 'Product not found — try another number or enter manually', aimCamera: 'Point camera at the barcode 📷', stopScan: 'Stop', addToMeals: '✅ Add to meals',
+    clearChat: '🗑️ Clear', typing: 'typing...',
   },
 }
 

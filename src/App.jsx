@@ -306,7 +306,7 @@ ${aiMemory.length ? `\nأشياء تعرفها عن هذا المستخدم (ا�
 
       <div style={{ padding: '0 16px' }}>
         {tab === 'home' && <Home {...{ target, totals, net, burned, remaining, water, setWater, waterGoal, steps, setSteps, stepsGoal, goal, meals, delMeal, editMeal, setTab, profile, workoutsDone, delWorkoutDone, openAdd: () => setAddOpen(true) }} />}
-        {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.food} />}
+        {tab === 'chat' && <ChatPanel ctx="food" thread={threads.food} loading={loading === 'food'} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG[lang].food} />}
         {tab === 'workout' && <Workout {...{ logWorkout, logAIWorkout, profile, goal, thread: threads.workout, loading: loading === 'workout', sendAI, clearThread }} />}
         {tab === 'recipes' && <Recipes {...{ savedRecipes, setSavedRecipes, goal, thread: threads.recipes, loading: loading === 'recipes', sendAI, clearThread }} />}
         {tab === 'progress' && <Progress {...{ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }} />}
@@ -736,20 +736,21 @@ function AddMealSheet({ onClose, addMeal, goal, computeMeal }) {
 
 // ✍️ إدخال نصي — يحسب ويسجّل مباشرة
 function TextEntry({ goal, onSend, back, err }) {
+  const t = useT()
   const [text, setText] = useState('')
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
-        <span style={{ fontWeight: 800, fontSize: 18 }}>✍️ اكتب وجبتك</span>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>{t.back}</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>{t.typeMeal}</span>
       </div>
-      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>صف وجبتك وأنا أحسب سعراتها</div>
-      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} autoFocus placeholder="مثلاً: صحن كبسة دجاج وسلطة وكوب لبن"
+      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>{t.describeMeal}</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} autoFocus
         style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, resize: 'none', fontFamily: 'inherit' }} />
       {err && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
       <button disabled={!text.trim()} onClick={() => onSend(text.trim())}
         style={{ ...primaryBtn, background: text.trim() ? goal.color : 'var(--card2)', opacity: text.trim() ? 1 : 0.5, marginTop: 14 }}>
-        ✅ احسب وسجّل
+        {t.calcLog}
       </button>
     </>
   )
@@ -757,29 +758,30 @@ function TextEntry({ goal, onSend, back, err }) {
 
 // 🎤 إدخال صوتي — يعرض الكلام وتعدّله وتتأكد قبل الحساب
 function VoiceEntry({ goal, onSend, back, err }) {
+  const { lang, t } = useLang()
   const [text, setText] = useState('')
   const [listening, setListening] = useState(false)
-  const [status, setStatus] = useState('اضغط المايك وقول وش أكلت')
+  const [status, setStatus] = useState(t.micHint)
   const recRef = useRef(null)
 
   function start() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { setStatus('جهازك ما يدعم الصوت — اكتب وجبتك تحت'); return }
+    if (!SR) { setStatus(t.noHeard); return }
     const rec = new SR()
-    rec.lang = 'ar-SA'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3
+    rec.lang = lang === 'en' ? 'en-US' : 'ar-SA'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3
     recRef.current = rec
-    setListening(true); setStatus('أتكلم الحين... أسمعك 👂')
+    setListening(true); setStatus(t.listening)
     let final = ''
     rec.onresult = (e) => {
       let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript
-        if (e.results[i].isFinal) final += t; else interim += t
+        const tr = e.results[i][0].transcript
+        if (e.results[i].isFinal) final += tr; else interim += tr
       }
       setText((final + ' ' + interim).trim())
     }
-    rec.onerror = (e) => { setListening(false); setStatus(e.error === 'no-speech' ? 'ما سمعت شي، حاول مرة ثانية' : 'صار خطأ، حاول مرة ثانية') }
-    rec.onend = () => { setListening(false); setStatus(final ? 'تأكد من الكلام وعدّله لو فيه غلط ✏️' : 'ما سمعت شي، جرّب مرة ثانية') }
+    rec.onerror = () => { setListening(false); setStatus(t.noHeard) }
+    rec.onend = () => { setListening(false); setStatus(final ? t.confirmText : t.noHeard) }
     rec.start()
   }
   function stop() { try { recRef.current?.stop() } catch {} setListening(false) }
@@ -787,8 +789,8 @@ function VoiceEntry({ goal, onSend, back, err }) {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
-        <span style={{ fontWeight: 800, fontSize: 18 }}>🎤 سجّل بصوتك</span>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>{t.back}</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>{t.voiceMeal}</span>
       </div>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <button onClick={listening ? stop : start}
@@ -797,13 +799,13 @@ function VoiceEntry({ goal, onSend, back, err }) {
         </button>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10 }}>{status}</div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>الكلام (عدّله لو فيه غلط):</div>
-      <textarea value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="مثلاً: صحن كبسة دجاج وسلطة"
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{t.transcript}</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
         style={{ width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, resize: 'none', fontFamily: 'inherit' }} />
       {err && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
       <button disabled={!text.trim()} onClick={() => onSend(text.trim())}
         style={{ ...primaryBtn, background: text.trim() ? goal.color : 'var(--card2)', opacity: text.trim() ? 1 : 0.5, marginTop: 14 }}>
-        ✅ احسب وسجّل
+        {t.calcLog}
       </button>
     </>
   )
@@ -811,19 +813,20 @@ function VoiceEntry({ goal, onSend, back, err }) {
 
 // إدخال يدوي
 function ManualEntry({ goal, onAdd, back, type: initType }) {
+  const t = useT()
   const [f, setF] = useState({ name: '', cal: '', p: '', c: '', fat: '' })
   const [type, setType] = useState(initType || guessType())
   const valid = f.name && f.cal
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
-        <span style={{ fontWeight: 800, fontSize: 18 }}>✏️ إدخال يدوي</span>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>{t.back}</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>{t.manualEntry}</span>
       </div>
-      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="اسم الوجبة (مثلاً: شاورما)"
+      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={t.mealName}
         style={{ width: '100%', padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, marginBottom: 10 }} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-        {[['cal', 'السعرات 🔥'], ['p', 'بروتين (g)'], ['c', 'كارب (g)'], ['fat', 'دهون (g)']].map(([k, l]) => (
+        {[['cal', t.caloriesL], ['p', t.proteinG], ['c', t.carbG], ['fat', t.fatG]].map(([k, l]) => (
           <div key={k}>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{l}</div>
             <input value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} type="number" placeholder="0"
@@ -833,13 +836,14 @@ function ManualEntry({ goal, onAdd, back, type: initType }) {
       </div>
       <MealTypePicker value={type} onChange={setType} color={goal.color} />
       <button disabled={!valid} onClick={() => onAdd({ name: f.name, cal: +f.cal || 0, p: +f.p || 0, c: +f.c || 0, f: +f.fat || 0, type })}
-        style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 16 }}>✅ أضف الوجبة</button>
+        style={{ ...primaryBtn, background: valid ? goal.color : 'var(--card2)', opacity: valid ? 1 : 0.5, marginTop: 16 }}>{t.addMealBtn}</button>
     </>
   )
 }
 
 // باركود — سكانر كاميرا + بحث OpenFoodFacts
 function BarcodeEntry({ goal, onAdd, back, type: initType }) {
+  const t = useT()
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -855,24 +859,24 @@ function BarcodeEntry({ goal, onAdd, back, type: initType }) {
     try {
       const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${q}.json`)
       const d = await r.json()
-      if (d.status !== 1 || !d.product) { setErr('ما لقيت المنتج — جرّب رقم ثاني أو أدخله يدوياً'); setLoading(false); return }
+      if (d.status !== 1 || !d.product) { setErr(t.notFound); setLoading(false); return }
       const p = d.product, n = p.nutriments || {}
       setResult({
-        name: p.product_name_ar || p.product_name || 'منتج',
+        name: p.product_name_ar || p.product_name || '—',
         cal: Math.round(n['energy-kcal_100g'] || n['energy-kcal_serving'] || 0),
         p: Math.round(n.proteins_100g || 0),
         c: Math.round(n.carbohydrates_100g || 0),
         f: Math.round(n.fat_100g || 0),
       })
-    } catch { setErr('خطأ بالاتصال، حاول مرة ثانية') }
+    } catch { setErr(t.notFound) }
     setLoading(false)
   }
 
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>← رجوع</button>
-        <span style={{ fontWeight: 800, fontSize: 18 }}>▦ باركود المنتج</span>
+        <button onClick={back} style={{ ...chip, padding: '6px 10px' }}>{t.back}</button>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>{t.barcode}</span>
       </div>
 
       {/* السكانر */}
@@ -881,16 +885,16 @@ function BarcodeEntry({ goal, onAdd, back, type: initType }) {
       ) : (
         <button onClick={() => { setErr(''); setResult(null); setScanning(true) }}
           style={{ ...primaryBtn, background: goal.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
-          📷 امسح الباركود بالكاميرا
+          {t.barcodeScan}
         </button>
       )}
 
       {/* إدخال يدوي للرقم */}
-      <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 6px', textAlign: 'center' }}>أو اكتب الرقم يدوياً</div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 6px', textAlign: 'center' }}>{t.orType}</div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <input value={code} onChange={e => setCode(e.target.value)} type="number" placeholder="مثال: 6281006..." onKeyDown={e => e.key === 'Enter' && lookup()}
+        <input value={code} onChange={e => setCode(e.target.value)} type="number" placeholder="6281006..." onKeyDown={e => e.key === 'Enter' && lookup()}
           style={{ flex: 1, padding: '13px 16px', borderRadius: 12, background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 16, width: '100%' }} />
-        <button onClick={() => lookup()} disabled={loading} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: 'var(--card2)' }}>{loading ? '...' : 'بحث'}</button>
+        <button onClick={() => lookup()} disabled={loading} style={{ ...primaryBtn, width: 'auto', padding: '0 20px', background: 'var(--card2)' }}>{loading ? '...' : t.search}</button>
       </div>
 
       {err && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ef444422', color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{err}</div>}
@@ -899,13 +903,13 @@ function BarcodeEntry({ goal, onAdd, back, type: initType }) {
         <div style={{ ...card, marginTop: 14 }} className="pop">
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>📦 {result.name}</div>
           <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: 13, marginBottom: 12 }}>
-            <span style={{ color: goal.color, fontWeight: 700 }}>{result.cal} سعرة</span>
-            <span style={{ color: '#ef4444' }}>ب {result.p}g</span>
-            <span style={{ color: '#3b82f6' }}>ك {result.c}g</span>
-            <span style={{ color: '#22c55e' }}>د {result.f}g</span>
+            <span style={{ color: goal.color, fontWeight: 700 }}>{result.cal} {t.calUnit}</span>
+            <span style={{ color: '#ef4444' }}>{t.protein.slice(0, 1)} {result.p}g</span>
+            <span style={{ color: '#3b82f6' }}>{t.carb.slice(0, 1)} {result.c}g</span>
+            <span style={{ color: '#22c55e' }}>{t.fat.slice(0, 1)} {result.f}g</span>
           </div>
           <div style={{ marginBottom: 12 }}><MealTypePicker value={type} onChange={setType} color={goal.color} /></div>
-          <button onClick={() => onAdd({ ...result, type })} style={{ ...primaryBtn, background: goal.color }}>✅ أضف للوجبات</button>
+          <button onClick={() => onAdd({ ...result, type })} style={{ ...primaryBtn, background: goal.color }}>{t.addToMeals}</button>
         </div>
       )}
     </>
@@ -1105,36 +1109,49 @@ function WaterCard({ water, setWater, waterGoal }) {
   )
 }
 
-// ============ إعدادات كل شات ============
+// ============ إعدادات كل شات (ثنائية اللغة) ============
 const CHAT_CONFIG = {
-  food: {
-    icon: '🥗', title: 'مدرّب التغذية', placeholder: 'اسأل عن نظامك الغذائي...',
-    welcome: ['أنا مدرّبك الغذائي 🥗', 'اسألني عن نظامك، نصائح، أو اقتراحات', 'وأتابع تقدّمك معك خطوة بخطوة'],
-    photo: true, photoText: 'صوّرت هذا الأكل، احسب لي سعراته وقيّمه لي.',
-    quick: [
-      ['كم أحتاج بروتين باليوم؟', '🥩 احتياج البروتين'],
-      ['اقترح لي نظام غذائي ليومي', '📋 نظام غذائي'],
-      ['وش أكل صحي للعشاء؟', '🌙 عشاء صحي'],
-      ['قيّم أكلي اليوم وش ناقص', '📊 قيّم يومي'],
-      ['أكلات تكسر الدهون', '🔥 حرق الدهون'],
-    ],
+  ar: {
+    food: {
+      icon: '🥗', title: 'مدرّب التغذية', placeholder: 'اسأل عن نظامك الغذائي...',
+      welcome: ['أنا مدرّبك الغذائي 🥗', 'اسألني عن نظامك، نصائح، أو اقتراحات', 'وأتابع تقدّمك معك خطوة بخطوة'],
+      photo: true, photoText: 'صوّرت هذا الأكل، احسب لي سعراته وقيّمه لي.',
+      quick: [['كم أحتاج بروتين باليوم؟', '🥩 احتياج البروتين'], ['اقترح لي نظام غذائي ليومي', '📋 نظام غذائي'], ['وش أكل صحي للعشاء؟', '🌙 عشاء صحي'], ['قيّم أكلي اليوم وش ناقص', '📊 قيّم يومي'], ['أكلات تكسر الدهون', '🔥 حرق الدهون']],
+    },
+    workout: {
+      icon: '🏋️‍♂️', title: 'المدرب الذكي', placeholder: 'اسأل مدربك...',
+      welcome: ['سولف مع مدربك الخاص!', 'قول له وش تبي تمرّن وأدواتك ومستواك', 'ويعطيك خطة وأوزان وتكرارات'], photo: false,
+      quick: [['سوّ لي تمرين صدر في البيت', '💪 تمرين صدر'], ['أبي جدول تمارين أسبوعي', '📅 جدول أسبوعي'], ['تمارين تنحيف الكرش', '🔥 تنحيف الكرش'], ['تمرين كامل للمبتدئين', '🌱 للمبتدئين']],
+    },
+    recipes: {
+      icon: '👨‍🍳', title: 'مطبخك الذكي', placeholder: 'وش مشتهي؟ أو وش عندك مكوّنات...',
+      welcome: ['وش مشتهي اليوم؟', 'قول لي وش نفسك فيه أو إيش عندك مكوّنات', 'وأطبخ لك وصفة على ذوقك'], photo: false,
+      quick: [['أنا مشتهي بروتين عالي، اقترح وصفة', '🍗 بروتين'], ['نفسي حلى صحي قليل سعرات', '🍰 حلى صحي'], ['وجبة سريعة في 10 دقايق', '⚡ سريعة'], ['وصفة أكل سعودي صحي', '🍚 سعودي']],
+    },
   },
-  workout: {
-    icon: '🏋️‍♂️', title: 'المدرب الذكي', placeholder: 'اسأل مدربك...',
-    welcome: ['سولف مع مدربك الخاص!', 'قول له وش تبي تمرّن وأدواتك ومستواك', 'ويعطيك خطة وأوزان وتكرارات'],
-    photo: false,
-    quick: [['سوّ لي تمرين صدر في البيت', '💪 تمرين صدر'], ['أبي جدول تمارين أسبوعي', '📅 جدول أسبوعي'], ['تمارين تنحيف الكرش', '🔥 تنحيف الكرش'], ['تمرين كامل للمبتدئين', '🌱 للمبتدئين']],
-  },
-  recipes: {
-    icon: '👨‍🍳', title: 'مطبخك الذكي', placeholder: 'وش مشتهي؟ أو وش عندك مكوّنات...',
-    welcome: ['وش مشتهي اليوم؟', 'قول لي وش نفسك فيه أو إيش عندك مكوّنات', 'وأطبخ لك وصفة على ذوقك'],
-    photo: false,
-    quick: [['أنا مشتهي بروتين عالي، اقترح وصفة', '🍗 بروتين'], ['نفسي حلى صحي قليل سعرات', '🍰 حلى صحي'], ['وجبة سريعة في 10 دقايق', '⚡ سريعة'], ['وصفة أكل سعودي صحي', '🍚 سعودي']],
+  en: {
+    food: {
+      icon: '🥗', title: 'Nutrition Coach', placeholder: 'Ask about your diet...',
+      welcome: ['I\'m your nutrition coach 🥗', 'Ask me about your diet, tips, or suggestions', 'and I\'ll track your progress with you'],
+      photo: true, photoText: 'I took a photo of this food, calculate its calories and rate it for me.',
+      quick: [['How much protein do I need daily?', '🥩 Protein needs'], ['Suggest a daily meal plan', '📋 Meal plan'], ['What\'s a healthy dinner?', '🌙 Healthy dinner'], ['Review my day, what\'s missing?', '📊 Review my day'], ['Fat-burning foods', '🔥 Burn fat']],
+    },
+    workout: {
+      icon: '🏋️‍♂️', title: 'AI Coach', placeholder: 'Ask your coach...',
+      welcome: ['Chat with your personal coach!', 'Tell it what to train, your equipment and level', 'and it gives you a plan, weights and reps'], photo: false,
+      quick: [['Give me a home chest workout', '💪 Chest workout'], ['I want a weekly workout split', '📅 Weekly plan'], ['Belly fat exercises', '🔥 Belly fat'], ['Full beginner workout', '🌱 Beginner']],
+    },
+    recipes: {
+      icon: '👨‍🍳', title: 'Smart Kitchen', placeholder: 'What are you craving? Or your ingredients...',
+      welcome: ['What are you craving today?', 'Tell me what you want or what ingredients you have', 'and I\'ll cook a recipe to your taste'], photo: false,
+      quick: [['I want high protein, suggest a recipe', '🍗 Protein'], ['Healthy low-cal dessert', '🍰 Dessert'], ['Quick 10-minute meal', '⚡ Quick'], ['Healthy Saudi dish recipe', '🍚 Saudi']],
+    },
   },
 }
 
 // ============ شات عام (يستخدم لكل خانة بشكل منفصل) ============
 function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, onLog }) {
+  const t = useT()
   const [logged, setLogged] = useState({})
   const [input, setInput] = useState('')
   const fileRef = useRef(null)
@@ -1177,7 +1194,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, on
       {/* رأس الشات */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 6, borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
         <span style={{ fontWeight: 800 }}>{config.icon} {config.title}</span>
-        {thread.length > 0 && <button onClick={() => clearThread(ctx)} style={{ ...chip, padding: '5px 10px', fontSize: 12 }}>🗑️ مسح</button>}
+        {thread.length > 0 && <button onClick={() => clearThread(ctx)} style={{ ...chip, padding: '5px 10px', fontSize: 12 }}>{t.clearChat}</button>}
       </div>
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
@@ -1201,7 +1218,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, on
             {/* أزرار تثبيت التمارين */}
             {m.logItems && onLog && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, width: '82%' }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>💪 ثبّت التمارين:</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{t.logExercises}</div>
                 {m.logItems.map((it, j) => {
                   const key = i + '-' + j
                   return (
@@ -1216,7 +1233,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, on
             )}
           </div>
         ))}
-        {loading && <div style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 14, paddingRight: 6 }}>{config.title} يكتب...</div>}
+        {loading && <div style={{ textAlign: t.dir === 'rtl' ? 'right' : 'left', color: 'var(--muted)', fontSize: 14, padding: '0 6px' }}>{config.title} {t.typing}</div>}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 0' }}>
@@ -1244,6 +1261,7 @@ function ChatPanel({ ctx, thread, loading, sendAI, clearThread, goal, config, on
 
 // ============ التمارين (مكتبة + مدرب ذكي) ============
 function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sendAI, clearThread }) {
+  const { lang, t } = useLang()
   const [view, setView] = useState('coach') // coach | library
   const [muscle, setMuscle] = useState('chest')
   const [place, setPlace] = useState('all')
@@ -1257,13 +1275,13 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
     <div className="fade">
       {/* تبديل: مدرب / مكتبة */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {[['coach', '🧠 المدرب الذكي'], ['library', '📚 مكتبة التمارين']].map(([v, l]) => (
+        {[['coach', t.coach], ['library', t.library]].map(([v, l]) => (
           <button key={v} onClick={() => setView(v)}
             style={{ ...seg, fontSize: 14, ...(view === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
         ))}
       </div>
 
-      {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.workout} onLog={logAIWorkout} />}
+      {view === 'coach' && <ChatPanel ctx="workout" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG[lang].workout} onLog={logAIWorkout} />}
 
       {view === 'library' && <>
       {/* كروت العضلات الملوّنة */}
@@ -1280,7 +1298,7 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
               }}>
               <span style={{ fontSize: 26 }}>{m.emoji}</span>
               <span style={{ fontSize: 12, fontWeight: 700 }}>{m.name}</span>
-              <span style={{ fontSize: 9, color: on ? '#ffffffcc' : 'var(--muted)' }}>{m.items.length} تمارين</span>
+              <span style={{ fontSize: 9, color: on ? '#ffffffcc' : 'var(--muted)' }}>{m.items.length} {t.exCount}</span>
             </button>
           )
         })}
@@ -1288,7 +1306,7 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
 
       {/* فلتر المكان */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {[['all', 'الكل'], ['home', '🏠 بيت'], ['gym', '🏋️ نادي']].map(([v, l]) => (
+        {[['all', t.all], ['home', t.homePlace], ['gym', t.gym]].map(([v, l]) => (
           <button key={v} onClick={() => setPlace(v)}
             style={{ ...seg, ...(place === v ? { background: ex.color, color: '#fff', borderColor: ex.color } : {}) }}>{l}</button>
         ))}
@@ -1297,10 +1315,10 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
       {/* عنوان القسم */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '0 4px' }}>
         <span style={{ fontSize: 24 }}>{ex.emoji}</span>
-        <span style={{ fontWeight: 800, fontSize: 18 }}>تمارين {ex.name}</span>
+        <span style={{ fontWeight: 800, fontSize: 18 }}>{t.exercisesOf} {ex.name}</span>
       </div>
 
-      {items.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 20 }}>ما فيه تمارين {place === 'home' ? 'بيت' : 'نادي'} هنا — جرّب "الكل"</div>}
+      {items.length === 0 && <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t.noExHere}</div>}
 
       {items.map((e, i) => {
         const isOpen = open === e.name
@@ -1316,7 +1334,7 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{e.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span>🎯 {e.target}</span>
-                  <span>{e.place === 'home' ? '🏠 بيت' : '🏋️ نادي'}</span>
+                  <span>{e.place === 'home' ? t.homePlace : t.gym}</span>
                 </div>
               </div>
               <span style={{ color: ex.color, fontWeight: 800 }}>{isOpen ? '−' : '+'}</span>
@@ -1324,16 +1342,16 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
             {isOpen && (
               <div className="fade" style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'inline-block', background: `${ex.color}22`, color: ex.color, padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, marginTop: 12 }}>
-                  المستوى: {e.level}
+                  {t.level}: {e.level}
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 13, margin: '12px 0 6px' }}>📋 خطوات الأداء:</div>
-                <ol style={{ paddingRight: 18, fontSize: 14, lineHeight: 1.9, color: '#cbd5e1' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, margin: '12px 0 6px' }}>📋 {t.steps2}:</div>
+                <ol style={{ paddingInlineStart: 18, fontSize: 14, lineHeight: 1.9, color: '#cbd5e1' }}>
                   {e.steps.map((s, j) => <li key={j}>{s}</li>)}
                 </ol>
                 <div style={{ background: '#f59e0b22', padding: 10, borderRadius: 10, fontSize: 13, marginTop: 10 }}>⚠️ {e.tip}</div>
                 <button onClick={() => { const c = logWorkout(e); setDone({ ...done, [e.name]: c }) }}
                   style={{ ...primaryBtn, background: done[e.name] ? '#16a34a' : ex.color, marginTop: 12 }}>
-                  {done[e.name] ? `✅ سجّلت (${done[e.name]} سعرة محروقة)` : '🔥 سويته — احسب الحرق'}
+                  {done[e.name] ? `${t.logged} (${done[e.name]} ${t.calUnit})` : t.didIt}
                 </button>
               </div>
             )}
@@ -1347,35 +1365,36 @@ function Workout({ logWorkout, logAIWorkout, profile, goal, thread, loading, sen
 
 // ============ الوصفات (شات طبخ منفصل + المحفوظة) ============
 function Recipes({ savedRecipes, setSavedRecipes, goal, thread, loading, sendAI, clearThread }) {
+  const { lang, t } = useLang()
   const [view, setView] = useState('chat') // chat | saved
   return (
     <div className="fade">
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {[['chat', '👨‍🍳 اطبخ معي'], ['saved', `📒 المحفوظة ${savedRecipes.length ? '(' + savedRecipes.length + ')' : ''}`]].map(([v, l]) => (
+        {[['chat', t.cookWithMe], ['saved', `${t.saved} ${savedRecipes.length ? '(' + savedRecipes.length + ')' : ''}`]].map(([v, l]) => (
           <button key={v} onClick={() => setView(v)}
             style={{ ...seg, fontSize: 14, ...(view === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
         ))}
       </div>
 
-      {view === 'chat' && <ChatPanel ctx="recipes" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG.recipes} />}
+      {view === 'chat' && <ChatPanel ctx="recipes" thread={thread} loading={loading} sendAI={sendAI} clearThread={clearThread} goal={goal} config={CHAT_CONFIG[lang].recipes} />}
 
       {view === 'saved' && <>
       {savedRecipes.length === 0 && (
         <div style={{ ...card, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-          ما عندك وصفات محفوظة — روح "اطبخ معي" واطلب وصفة، وتنحفظ هنا تلقائياً 👨‍🍳
+          {t.noSaved}
         </div>
       )}
       {savedRecipes.map(r => (
         <div key={r.id} style={{ ...card, marginBottom: 8 }} className="pop">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{r.name}</div>
-            <span style={{ background: 'var(--accent2)', padding: '3px 10px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>{r.cal} سعرة</span>
+            <span style={{ background: 'var(--accent2)', padding: '3px 10px', borderRadius: 20, fontSize: 13, fontWeight: 700 }}>{r.cal} {t.calUnit}</span>
           </div>
-          <div style={{ fontWeight: 700, fontSize: 13, marginTop: 10, color: 'var(--muted)' }}>المقادير:</div>
-          <ul style={{ paddingRight: 18, fontSize: 14, lineHeight: 1.8 }}>{r.ing.map((x, i) => <li key={i}>{x}</li>)}</ul>
-          <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8, color: 'var(--muted)' }}>الطريقة:</div>
-          <ol style={{ paddingRight: 18, fontSize: 14, lineHeight: 1.8 }}>{r.steps.map((x, i) => <li key={i}>{x}</li>)}</ol>
-          <button onClick={() => setSavedRecipes(s => s.filter(x => x.id !== r.id))} style={{ ...chip, marginTop: 8 }}>🗑️ حذف</button>
+          <div style={{ fontWeight: 700, fontSize: 13, marginTop: 10, color: 'var(--muted)' }}>{t.ingredients}:</div>
+          <ul style={{ paddingInlineStart: 18, fontSize: 14, lineHeight: 1.8 }}>{r.ing.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8, color: 'var(--muted)' }}>{t.method}:</div>
+          <ol style={{ paddingInlineStart: 18, fontSize: 14, lineHeight: 1.8 }}>{r.steps.map((x, i) => <li key={i}>{x}</li>)}</ol>
+          <button onClick={() => setSavedRecipes(s => s.filter(x => x.id !== r.id))} style={{ ...chip, marginTop: 8 }}>{t.delete}</button>
         </div>
       ))}
       </>}
@@ -1385,6 +1404,7 @@ function Recipes({ savedRecipes, setSavedRecipes, goal, thread, loading, sendAI,
 
 // ============ التقدم ============
 function Progress({ weights, setWeights, profile, setProfile, target, goal, net, totals, burned, steps, stepsGoal, water, waterGoal }) {
+  const t = useT()
   const [w, setW] = useState('')
   function addW() {
     if (!w) return
@@ -1400,35 +1420,35 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal, net,
   return (
     <div className="fade stagger">
       {/* ===== المتابعة اليومية ===== */}
-      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 10 }}>📅 متابعتك اليوم</div>
+      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 10 }}>{t.todayTracking}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <DailyStat icon="🔥" label="السعرات" val={net} max={target} unit="" color={goal.color} />
-        <DailyStat icon="💧" label="الماء" val={water} max={waterGoal} unit="مل" color="#3b82f6" />
-        <DailyStat icon="👟" label="الخطوات" val={steps} max={stepsGoal} unit="" color="#a855f7" />
-        <DailyStat icon="🍽️" label="مأكول" val={totals.cal} max={target} unit="" color="#f59e0b" sub={`محروق ${burned}`} />
+        <DailyStat icon="🔥" label={t.calories} val={net} max={target} unit="" color={goal.color} />
+        <DailyStat icon="💧" label={t.water} val={water} max={waterGoal} unit={t.dir === 'rtl' ? 'مل' : 'ml'} color="#3b82f6" />
+        <DailyStat icon="👟" label={t.stepsLabel} val={steps} max={stepsGoal} unit="" color="#a855f7" />
+        <DailyStat icon="🍽️" label={t.eaten} val={totals.cal} max={target} unit="" color="#f59e0b" sub={`${t.burned} ${burned}`} />
       </div>
 
       {/* ===== الوزن الحالي ===== */}
       <div style={{ ...card, marginTop: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>الوزن الحالي</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>{t.currentWeight}</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
               <span style={{ fontSize: 38, fontWeight: 800 }}>{profile.weight}</span>
-              <span style={{ fontSize: 16, color: 'var(--muted)' }}>كجم</span>
+              <span style={{ fontSize: 16, color: 'var(--muted)' }}>{t.kg}</span>
             </div>
             {weights.length > 0 && change !== '0.0' && (
               <div style={{ display: 'inline-block', marginTop: 4, fontSize: 12, fontWeight: 700, color: up ? '#f59e0b' : '#22c55e', background: (up ? '#f59e0b' : '#22c55e') + '22', padding: '2px 10px', borderRadius: 20 }}>
-                {up ? '↑' : '↓'} {Math.abs(change)} كجم من البداية
+                {up ? '↑' : '↓'} {Math.abs(change)} {t.kg} {t.fromStart}
               </div>
             )}
           </div>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: `${goal.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>⚖️</div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <input value={w} onChange={e => setW(e.target.value)} placeholder="سجّل وزن جديد" type="number"
+          <input value={w} onChange={e => setW(e.target.value)} placeholder={t.logWeight} type="number"
             style={{ flex: 1, padding: '12px 14px', borderRadius: 12, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', width: '100%' }} />
-          <button onClick={addW} style={{ ...primaryBtn, width: 'auto', padding: '0 22px', background: goal.color }}>＋ سجّل</button>
+          <button onClick={addW} style={{ ...primaryBtn, width: 'auto', padding: '0 22px', background: goal.color }}>{t.logBtn}</button>
         </div>
       </div>
 
@@ -1446,13 +1466,15 @@ function Progress({ weights, setWeights, profile, setProfile, target, goal, net,
 
 // بطاقة إحصائية يومية
 function DailyStat({ icon, label, val, max, unit, color, sub }) {
+  const t = useT()
+  const kk = t.dir === 'rtl' ? 'ك' : 'k'
   const pct = Math.min(100, max ? (val / max) * 100 : 0)
   return (
     <div style={{ ...card, padding: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{icon} {label}</span>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color }}>{val >= 1000 ? val.toLocaleString() : val}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}> / {max >= 1000 ? (max / 1000).toFixed(1) + 'ك' : max}{unit}</span></div>
+      <div style={{ fontSize: 22, fontWeight: 800, color }}>{val >= 1000 ? val.toLocaleString() : val}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}> / {max >= 1000 ? (max / 1000).toFixed(1) + kk : max}{unit ? ' ' + unit : ''}</span></div>
       <div style={{ height: 6, background: 'var(--card2)', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: '.4s' }} />
       </div>
@@ -1463,11 +1485,12 @@ function DailyStat({ icon, label, val, max, unit, color, sub }) {
 
 // رسم بياني منحني لتطور الوزن
 function WeightChart({ weights, profile, goal }) {
+  const t = useT()
   const data = [...weights].reverse().slice(-12)
   if (data.length < 2) {
     return (
       <div style={{ ...card, marginTop: 12, textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-        📈 سجّل وزنك أكثر من مرة عشان يطلع لك رسم التطور
+        {t.weightTrendEmpty}
       </div>
     )
   }
@@ -1488,7 +1511,7 @@ function WeightChart({ weights, profile, goal }) {
   const area = path + ` L ${pts[pts.length - 1][0]} ${H - pad} L ${pts[0][0]} ${H - pad} Z`
   return (
     <div style={{ ...card, marginTop: 12 }}>
-      <div style={{ fontWeight: 700, marginBottom: 10 }}>📈 تطور الوزن</div>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>{t.weightTrend}</div>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
         <defs>
           <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
@@ -1512,6 +1535,7 @@ function WeightChart({ weights, profile, goal }) {
 
 // ============ بطاقة هدف الوزن ============
 function GoalCard({ profile, goal }) {
+  const t = useT()
   const start = profile.startWeight || profile.weight
   const cur = profile.weight
   const tgt = profile.targetWeight
@@ -1522,20 +1546,20 @@ function GoalCard({ profile, goal }) {
   return (
     <div style={{ ...card, marginTop: 12, background: `linear-gradient(135deg, ${goal.color}22, var(--card))` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 700 }}>🎯 هدفك</span>
+        <span style={{ fontWeight: 700 }}>{t.yourTarget}</span>
         <span style={{ fontSize: 13, color: goal.color, fontWeight: 700 }}>{pct}% ✓</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
-        <span style={{ color: 'var(--muted)' }}>البداية <b style={{ color: 'var(--text)' }}>{start}</b></span>
-        <span style={{ color: 'var(--muted)' }}>الحالي <b style={{ color: goal.color }}>{cur}</b></span>
-        <span style={{ color: 'var(--muted)' }}>الهدف <b style={{ color: 'var(--text)' }}>{tgt}</b></span>
+        <span style={{ color: 'var(--muted)' }}>{t.startW} <b style={{ color: 'var(--text)' }}>{start}</b></span>
+        <span style={{ color: 'var(--muted)' }}>{t.current} <b style={{ color: goal.color }}>{cur}</b></span>
+        <span style={{ color: 'var(--muted)' }}>{t.target} <b style={{ color: 'var(--text)' }}>{tgt}</b></span>
       </div>
       <div style={{ height: 12, background: 'var(--card2)', borderRadius: 8, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}aa)`, borderRadius: 8, transition: '.4s' }} />
       </div>
       <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginTop: 10 }}>
-        باقي لك <b style={{ color: goal.color }}>{remain} كجم</b>
-        {profile.weeks > 0 && <span> · المدة {profile.weeks} أسبوع</span>}
+        {t.remainingW} <b style={{ color: goal.color }}>{remain} {t.kg}</b>
+        {profile.weeks > 0 && <span> · {t.duration} {profile.weeks} {t.week}</span>}
       </div>
     </div>
   )
@@ -1543,20 +1567,21 @@ function GoalCard({ profile, goal }) {
 
 // ============ مؤشر كتلة الجسم ============
 function BMICard({ profile }) {
+  const t = useT()
   const h = profile.height / 100
   const bmi = h > 0 ? (profile.weight / (h * h)) : 0
   const b = bmi.toFixed(1)
   let cat, col
-  if (bmi < 18.5) { cat = 'نحافة'; col = '#3b82f6' }
-  else if (bmi < 25) { cat = 'طبيعي'; col = '#22c55e' }
-  else if (bmi < 30) { cat = 'زيادة'; col = '#f59e0b' }
-  else { cat = 'سمنة'; col = '#ef4444' }
+  if (bmi < 18.5) { cat = t.bmiThin; col = '#3b82f6' }
+  else if (bmi < 25) { cat = t.bmiNormal; col = '#22c55e' }
+  else if (bmi < 30) { cat = t.bmiOver; col = '#f59e0b' }
+  else { cat = t.bmiObese; col = '#ef4444' }
   // موضع المؤشر على المقياس 15-40
   const pos = Math.max(0, Math.min(100, ((bmi - 15) / 25) * 100))
   return (
     <div style={{ ...card, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 700 }}>مؤشر كتلة الجسم</span>
+        <span style={{ fontWeight: 700 }}>{t.bmi}</span>
         <span><b style={{ fontSize: 22 }}>{b}</b> <span style={{ background: col, color: '#fff', padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{cat}</span></span>
       </div>
       <div style={{ position: 'relative', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#3b82f6 0%,#22c55e 30%,#f59e0b 55%,#ef4444 100%)' }}>
@@ -1709,48 +1734,48 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
 
       {/* الملف الشخصي */}
       <Section title={t.profile}>
-        <Row icon="🎯" color={goal.color} title="تغيير الهدف" sub={`${goal.emoji} ${goal.name}`} onClick={() => setGoalId(null)} />
+        <Row icon="🎯" color={goal.color} title={t.changeGoal} sub={`${goal.emoji} ${t[goal.id]}`} onClick={() => setGoalId(null)} />
         {!editProfile ? (
-          <Row icon="📊" color="#3b82f6" title="تعديل بياناتك" sub={`${profile.weight}كجم · ${profile.height}سم · ${profile.age}سنة · ${target} سعرة`} onClick={() => { setPf({ ...profile }); setEditProfile(true) }} last />
+          <Row icon="📊" color="#3b82f6" title={t.editData} sub={t.editDataSub(profile.weight, profile.height, profile.age, target)} onClick={() => { setPf({ ...profile }); setEditProfile(true) }} last />
         ) : (
           <div style={{ padding: 14, borderTop: '1px solid var(--border)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              {[['weight', 'وزن'], ['height', 'طول'], ['age', 'عمر']].map(([k, l]) => (
+              {[['weight', t.weight.split(' ')[0]], ['height', t.height.split(' ')[0]], ['age', t.age]].map(([k, l]) => (
                 <div key={k}>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{l}</div>
                   <input value={pf[k]} onChange={e => setPf({ ...pf, [k]: e.target.value })} type="number" style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 15, textAlign: 'center' }} />
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', margin: '10px 0 4px' }}>النشاط</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', margin: '10px 0 4px' }}>{t.activityWord}</div>
             <div style={{ display: 'grid', gap: 5 }}>
-              {[[1.2, 'قليل'], [1.375, 'خفيف'], [1.55, 'متوسط'], [1.725, 'عالي']].map(([v, l]) => (
+              {[[1.2, t.actLowS], [1.375, t.actLightS], [1.55, t.actMedS], [1.725, t.actHighS]].map(([v, l]) => (
                 <button key={v} onClick={() => setPf({ ...pf, activity: v })} style={{ ...seg, fontSize: 13, padding: 9, ...(+pf.activity === v ? { background: goal.color, color: '#fff' } : {}) }}>{l}</button>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={saveProfile} style={{ flex: 1, ...primaryBtn, background: goal.color }}>حفظ</button>
-              <button onClick={() => setEditProfile(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>إلغاء</button>
+              <button onClick={saveProfile} style={{ flex: 1, ...primaryBtn, background: goal.color }}>{t.save}</button>
+              <button onClick={() => setEditProfile(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>{t.cancel}</button>
             </div>
           </div>
         )}
       </Section>
 
       {/* الأهداف */}
-      <Section title="الأهداف اليومية">
+      <Section title={t.dailyGoals}>
         {!editGoals ? <>
-          <Row icon="💧" color="#3b82f6" title="هدف الماء" sub={`${waterGoal} مل يومياً`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
-          <Row icon="👟" color="#a855f7" title="هدف الخطوات" sub={`${stepsGoal.toLocaleString()} خطوة يومياً`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
-          <Row icon="❤️" color="#ef4444" title="ربط Apple Health" sub="يحتاج تطبيق آيفون (قريباً)" onClick={() => alert('ربط Apple Health يحتاج النسخة الأصلية على آيفون — قريباً 🍏')} last />
+          <Row icon="💧" color="#3b82f6" title={t.waterGoal} sub={`${waterGoal} ${t.mlDaily}`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
+          <Row icon="👟" color="#a855f7" title={t.stepsGoal} sub={`${stepsGoal.toLocaleString()} ${t.stepsDaily}`} onClick={() => { setWg(waterGoal); setSg(stepsGoal); setEditGoals(true) }} />
+          <Row icon="❤️" color="#ef4444" title={t.appleHealth} sub={t.appleHealthSub} onClick={() => alert(t.appleHealthSub)} last />
         </> : (
           <div style={{ padding: 14 }}>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>💧 هدف الماء (مل)</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>💧 {t.waterGoal}</div>
             <input value={wg} onChange={e => setWg(e.target.value)} type="number" style={{ width: '100%', padding: 11, borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', marginBottom: 10 }} />
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>👟 هدف الخطوات</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>👟 {t.stepsGoal}</div>
             <input value={sg} onChange={e => setSg(e.target.value)} type="number" style={{ width: '100%', padding: 11, borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={saveGoals} style={{ flex: 1, ...primaryBtn, background: goal.color }}>حفظ</button>
-              <button onClick={() => setEditGoals(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>إلغاء</button>
+              <button onClick={saveGoals} style={{ flex: 1, ...primaryBtn, background: goal.color }}>{t.save}</button>
+              <button onClick={() => setEditGoals(false)} style={{ padding: '0 18px', borderRadius: 12, background: 'var(--card2)', color: 'var(--muted)' }}>{t.cancel}</button>
             </div>
           </div>
         )}
@@ -1773,9 +1798,9 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
         <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, paddingRight: 4 }}>{t.aiMemory}</div>
         <div style={{ ...card }}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
-            المساعد يتعلّم تفضيلاتك وأحجام حصصك تلقائياً وأنت تسولف معه، ويستخدمها ليعطيك ردود أدق. تقدر تضيف أو تحذف.
+            {t.aiMemoryHint}
           </div>
-          {aiMemory.length === 0 && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: 10 }}>ما تعلّم شي بعد — سولف مع المساعد وقول له تفضيلاتك 💬</div>}
+          {aiMemory.length === 0 && <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: 10 }}>{t.aiMemoryEmpty}</div>}
           {aiMemory.map(m => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ flex: 1, fontSize: 14 }}>• {m.text}</span>
@@ -1783,26 +1808,26 @@ function Settings({ profile, setProfile, goal, setGoalId, waterGoal, setWaterGoa
             </div>
           ))}
           <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-            <input value={newFact} onChange={e => setNewFact(e.target.value)} placeholder="أضف معلومة (مثلاً: أنا نباتي)" onKeyDown={e => e.key === 'Enter' && newFact.trim() && (rememberFact(newFact.trim()), setNewFact(''))}
+            <input value={newFact} onChange={e => setNewFact(e.target.value)} placeholder={t.addFactPh} onKeyDown={e => e.key === 'Enter' && newFact.trim() && (rememberFact(newFact.trim()), setNewFact(''))}
               style={{ flex: 1, padding: '10px 12px', borderRadius: 10, background: 'var(--card2)', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 13, width: '100%' }} />
-            <button onClick={() => { if (newFact.trim()) { rememberFact(newFact.trim()); setNewFact('') } }} style={{ padding: '0 16px', borderRadius: 10, background: goal.color, color: '#fff', fontSize: 13, fontWeight: 700 }}>أضف</button>
+            <button onClick={() => { if (newFact.trim()) { rememberFact(newFact.trim()); setNewFact('') } }} style={{ padding: '0 16px', borderRadius: 10, background: goal.color, color: '#fff', fontSize: 13, fontWeight: 700 }}>{t.add.replace('+ ', '')}</button>
           </div>
         </div>
       </div>
 
       {/* عن التطبيق */}
-      <Section title="عن التطبيق">
-        <Row icon="⚕️" color="#3b82f6" title="تنبيه طبي" sub="معلومات مهمة عن استخدام التطبيق" onClick={() => alert('⚕️ تنبيه طبي\n\nهذا التطبيق للمساعدة والتوعية فقط، وليس بديلاً عن استشارة الطبيب أو أخصائي التغذية. جميع القيم (السعرات، الماكروز، حرق التمارين) تقديرية وقد تختلف. استشر مختصاً قبل البدء بأي نظام غذائي أو رياضي، خاصة إذا كان لديك أي حالة صحية.')} last />
+      <Section title={t.about}>
+        <Row icon="⚕️" color="#3b82f6" title={t.medicalNote} sub={t.medicalNoteSub} onClick={() => alert(t.disclaimer)} last />
       </Section>
 
       {/* البيانات */}
-      <Section title="البيانات">
-        <Row icon="🔄" color="#f59e0b" title="تصفير بيانات اليوم" sub="يبدأ يومك من جديد" onClick={resetToday} />
-        <Row icon="🗑️" color="#ef4444" title="مسح كل البيانات" sub="إعادة ضبط كاملة" onClick={resetAll} danger last />
+      <Section title={t.data}>
+        <Row icon="🔄" color="#f59e0b" title={t.resetToday} sub={t.resetTodaySub} onClick={resetToday} />
+        <Row icon="🗑️" color="#ef4444" title={t.resetAll} sub={t.resetAllSub} onClick={resetAll} danger last />
       </Section>
 
       <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 12, marginTop: 22 }}>
-        صحّتي · الإصدار 1.0 🥗<br />صُنع بحب لك 💚
+        {t.version}
       </div>
     </div>
   )
